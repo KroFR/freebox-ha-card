@@ -8,7 +8,7 @@
 
 [English version](README_EN.md)
 
-Une carte Lovelace responsive pour [Home Assistant](https://www.home-assistant.io/), conçue pour l’intégration Freebox officielle. Elle regroupe la bande passante, les informations système et matérielles, la téléphonie et les suivis d’appareils dans une seule carte configurable.
+Une carte Lovelace responsive pour [Home Assistant](https://www.home-assistant.io/), conçue pour l’intégration [Freebox officielle](https://www.home-assistant.io/integrations/freebox). Elle regroupe la bande passante, les informations système et matérielles, la téléphonie et les suivis d’appareils dans une seule carte configurable.
 
 ### Bande Passante
 
@@ -67,17 +67,15 @@ Certaines sections apparaissent uniquement lorsque les entités nécessaires son
 
 ## 📦 Installation
 
-### HACS
+### HACS (Recommandé)
 
-Lorsque ce dépôt sera disponible dans HACS :
-
-1. Open HACS in Home Assistant.
-2. Click on the three dots in the top right corner.
-3. Select Custom repositories.
-4. Add this repository URL: https://github.com/KroFR/freebox-ha-card
-5. Select Dashboard as the category.
-6. Click Add.
-7. Search for Freebox Card and install it.
+1. Ouvrez HACS dans Home Assistant.
+2. Cliquez sur le menu à trois points en haut à droite.
+3. Sélectionnez Custom repositories.
+4. Saisissez l’URL du dépôt : https://github.com/KroFR/freebox-ha-card
+5. Sélectionnez Dashboard comme catégorie.
+6. Cliquez sur Add.
+7. Recherchez Freebox Card et installez-la.
 
 ### Installation manuelle
 
