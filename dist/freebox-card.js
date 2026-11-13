@@ -5,7 +5,7 @@
  *
  * License: MIT
  */
-const CARD_VERSION = "2026.11.0";
+const CARD_VERSION = "2026.11.1";
 
 /**
  * Return the Freebox devices exposed by Home Assistant's entity registry.
@@ -65,7 +65,7 @@ class FreeboxCard extends HTMLElement {
 			storage: "Storage",
 			wifi: "Wi-Fi",
 			devices: "Devices",
-			device_trackers: "Device trackers",
+			device_trackers: "Devices",
 			total_devices: "Total",
 			home_devices: "Connected",
 			away_devices: "Disconnected",
@@ -121,7 +121,7 @@ class FreeboxCard extends HTMLElement {
 			storage: "Stockage",
 			wifi: "Wi-Fi",
 			devices: "Appareils",
-			device_trackers: "Suivis d’appareils",
+			device_trackers: "Appareils",
 			total_devices: "Total",
 			home_devices: "Connectés",
 			away_devices: "Déconnectés",
@@ -474,11 +474,26 @@ class FreeboxCard extends HTMLElement {
 			|| candidates.find((id) => /marquer[_\s-]*(les[_\s-]*)?appels?[_\s-]*(comme[_\s-]*)?lus?/.test(text(id)));
 	}
 
+	_findPingLatency() {
+		const registry = this._entityRegistry.length ? this._entityRegistry : Object.values(this._hass?.entities || {});
+		return registry
+			.filter((entity) => entity?.platform === "ping" && !entity.disabled_by && entity.entity_id?.startsWith("sensor."))
+			.filter((entity) => {
+				const state = this._hass.states[entity.entity_id];
+				if (!state) return false;
+				const name = [entity.entity_id, entity.name, entity.original_name, state.attributes?.friendly_name]
+					.filter(Boolean).join(" ").toLowerCase();
+				return /average|moyen/.test(name);
+			})
+			.map((entity) => entity.entity_id)
+			.sort((a, b) => a.localeCompare(b))[0];
+	}
+
 	_resolveEntities() {
 		return {
 			download: this._find("sensor", ["download", "telechargement", "vitesse_d_envoi"]),
 			upload: this._find("sensor", ["upload", "envoi", "vitesse_de_telechargement"]),
-			latency: this._config?.latency_entity && this._hass.states[this._config.latency_entity] ? this._config.latency_entity : undefined,
+			latency: this._config?.latency_entity && this._hass.states[this._config.latency_entity] ? this._config.latency_entity : this._findPingLatency(),
 			uptime: this._getIntegrationEntityIds().find((id) => id === "sensor.freebox_uptime" || /uptime|temps_de_fonctionnement/i.test(id)),
 			hardwareTemperatures: this._getIntegrationEntityIds().filter((id) => {
 				if (!id.startsWith("sensor."))
@@ -1447,6 +1462,20 @@ class FreeboxCardEditor extends HTMLElement {
 		});
 	}
 
+	_findDefaultLatencyEntity() {
+		if (!this._hass) return "";
+		return Object.values(this._hass.entities || {})
+			.filter((entity) => entity?.platform === "ping" && !entity.disabled_by && entity.entity_id?.startsWith("sensor."))
+			.filter((entity) => {
+				const state = this._hass.states[entity.entity_id];
+				if (!state) return false;
+				const name = [entity.entity_id, entity.name, entity.original_name, state.attributes?.friendly_name]
+					.filter(Boolean).join(" ").toLowerCase();
+				return /average|moyen/.test(name);
+			})
+			.map((entity) => entity.entity_id)
+			.sort((a, b) => a.localeCompare(b))[0] || "";
+	}
 	_initializeEntityPickers() {
 		this.querySelectorAll("ha-entity-picker[data-config]").forEach((picker) => {
 			picker.hass = this._hass;
@@ -1517,7 +1546,7 @@ class FreeboxCardEditor extends HTMLElement {
 				element.hass = this._hass;
 				element.required = false;
 				element.hideClearIcon = false;
-				element.value = value ?? "";
+				element.value = value ?? (key === "latency_entity" ? this._findDefaultLatencyEntity() : "");
 				return;
 			}
 			if (element.tagName === "HA-SWITCH") {
