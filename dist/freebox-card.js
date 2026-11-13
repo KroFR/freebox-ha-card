@@ -73,6 +73,8 @@ class FreeboxCard extends HTMLElement {
 			connected_devices_list: "Connected devices",
 			away_devices_list: "Disconnected devices",
 			download: "Download",
+			bandwidth_history: "Bandwidth history",
+			no_history: "No history available",
 			latency: "Latency",
 			excellent: "Excellent",
 			correct: "Fair",
@@ -129,6 +131,8 @@ class FreeboxCard extends HTMLElement {
 			connected_devices_list: "Appareils connectés",
 			away_devices_list: "Appareils déconnectés",
 			download: "Téléchargement",
+			bandwidth_history: "Historique de la bande passante",
+			no_history: "Aucun historique disponible",
 			latency: "Latence",
 			excellent: "Excellent",
 			correct: "Correcte",
@@ -171,6 +175,8 @@ class FreeboxCard extends HTMLElement {
 		show_debug: false,
 		show_header: true,
 		show_card_background: true,
+		show_bandwidth_history: true,
+		history_hours: "8",
 	};
 
 	static getConfigElement() {
@@ -190,13 +196,14 @@ class FreeboxCard extends HTMLElement {
 		this._entityRegistry = [];
 		this._registryLoaded = false;
 		this._registryLoading = false;
+		this._bandwidthHistory = { key: "", loadedAt: 0, loading: false, series: {} };
 	}
 
 	setConfig(config) {
 		const source = config && typeof config === "object" ? config : {};
 		const safeConfig = {};
-		const stringFields = ["name", "device_id", "latency_entity", "download_bandwidth", "upload_bandwidth"];
-		const booleanFields = ["show_internet", "show_system", "show_hardware", "show_telephony", "show_devices", "show_debug", "show_header", "show_card_background"];
+		const stringFields = ["name", "device_id", "latency_entity", "download_bandwidth", "upload_bandwidth", "history_hours"];
+		const booleanFields = ["show_internet", "show_system", "show_hardware", "show_telephony", "show_devices", "show_debug", "show_header", "show_card_background", "show_bandwidth_history"];
 		for (const key of stringFields)
 			if (typeof source[key] === "string") safeConfig[key] = source[key].slice(0, 512);
 		for (const key of booleanFields)
@@ -491,8 +498,8 @@ class FreeboxCard extends HTMLElement {
 
 	_resolveEntities() {
 		return {
-			download: this._find("sensor", ["download", "telechargement", "vitesse_d_envoi"]),
-			upload: this._find("sensor", ["upload", "envoi", "vitesse_de_telechargement"]),
+			download: this._find("sensor", ["download", "telechargement", "vitesse_de_telechargement"]),
+			upload: this._find("sensor", ["upload", "envoi", "vitesse_d_envoi"]),
 			latency: this._config?.latency_entity && this._hass.states[this._config.latency_entity] ? this._config.latency_entity : this._findPingLatency(),
 			uptime: this._getIntegrationEntityIds().find((id) => id === "sensor.freebox_uptime" || /uptime|temps_de_fonctionnement/i.test(id)),
 			hardwareTemperatures: this._getIntegrationEntityIds().filter((id) => {
@@ -771,6 +778,129 @@ class FreeboxCard extends HTMLElement {
 		</button>`;
 	}
 
+	_getHistorySeries(history, entityId) {
+		if (Array.isArray(history?.[entityId])) return history[entityId];
+		if (Array.isArray(history)) {
+			// Some HA frontend responses are grouped arrays rather than an entity-id map.
+			const groups = history.filter(Array.isArray);
+			const byEntity = groups.find((group) => group.some((item) => item?.entity_id === entityId));
+			if (byEntity) return byEntity.filter((item) => !item?.entity_id || item.entity_id === entityId);
+			return history.filter((item) => item && !Array.isArray(item) && item.entity_id === entityId);
+		}
+		return [];
+	}
+
+	_normalizeBandwidthHistory(history, entityId) {
+		const rawSeries = this._getHistorySeries(history, entityId);
+		const parsed = [];
+		let rejected = 0;
+		for (const item of rawSeries) {
+			const value = Number.parseFloat(item?.state ?? item?.s);
+			const rawTimestamp = item?.last_updated ?? item?.last_changed ?? item?.lu ?? item?.lc;
+			let timestamp;
+			if (typeof rawTimestamp === "number") timestamp = rawTimestamp < 100000000000 ? rawTimestamp * 1000 : rawTimestamp;
+			else timestamp = Date.parse(rawTimestamp);
+			if (!Number.isFinite(value) || !Number.isFinite(timestamp)) {
+				rejected += 1;
+				continue;
+			}
+			parsed.push({ timestamp, value: Math.max(0, value) });
+		}
+		console.info("[freebox-card][history] Parsed series", { entityId, received: rawSeries.length, parsed: parsed.length, rejected, firstRaw: rawSeries[0] ?? null, lastRaw: rawSeries.at(-1) ?? null });
+		return parsed.sort((x, y) => x.timestamp - y.timestamp);
+	}
+	async _loadBandwidthHistory(downloadEntity, uploadEntity) {
+		console.info("[freebox-card][history] Loader called", { downloadEntity, uploadEntity, enabled: this._config.show_bandwidth_history, hasCallWS: Boolean(this._hass?.callWS) });
+		if (!this._hass?.callWS || !this._config.show_bandwidth_history) return;
+		const entityIds = [downloadEntity, uploadEntity].filter((id) => this._isValidEntityId(id));
+		if (!entityIds.length) {
+			console.warn("[freebox-card][history] No valid bandwidth entities", { downloadEntity, uploadEntity });
+			return;
+		}
+		const hours = Math.min(Math.max(Number.parseInt(this._config.history_hours, 10) || 8, 1), 168);
+		const key = `${entityIds.join("|")}|${hours}`;
+		const fresh = this._bandwidthHistory.key === key && Date.now() - this._bandwidthHistory.loadedAt < 300000;
+		if (fresh || this._bandwidthHistory.loading) return;
+		this._bandwidthHistory = { ...this._bandwidthHistory, key, loading: true };
+		try {
+			const end = new Date();
+			const start = new Date(end.getTime() - hours * 3600000);
+			const request = { type: "history/history_during_period", start_time: start.toISOString(), end_time: end.toISOString(), entity_ids: entityIds, no_attributes: true, significant_changes_only: false };
+			console.info("[freebox-card][history] Request", request);
+			const history = await this._hass.callWS(request);
+			console.info("[freebox-card][history] Raw response", history);
+			const series = Object.fromEntries(entityIds.map((id) => [id, this._normalizeBandwidthHistory(history, id)]));
+			console.info("[freebox-card][history] Normalized counts", Object.fromEntries(entityIds.map((id) => [id, series[id].length])));
+			this._bandwidthHistory = { key, loadedAt: Date.now(), loading: false, series };
+		} catch (error) {
+			console.error("[freebox-card][history] Unable to load bandwidth history", { error, entityIds, hours });
+			this._bandwidthHistory = { key, loadedAt: Date.now(), loading: false, series: {} };
+		}
+		this._render();
+	}
+
+	_downsampleHistory(points, start, end, buckets = 180) {
+		if (points.length <= buckets) return points;
+		const span = Math.max(end - start, 1);
+		const grouped = Array.from({ length: buckets }, () => []);
+		for (const point of points) {
+			const index = Math.min(buckets - 1, Math.max(0, Math.floor((point.timestamp - start) / span * buckets)));
+			grouped[index].push(point);
+		}
+		return grouped.flatMap((bucket) => {
+			if (!bucket.length) return [];
+			const maximum = bucket.reduce((best, point) => point.value > best.value ? point : best, bucket[0]);
+			const average = bucket.reduce((sum, point) => sum + point.value, 0) / bucket.length;
+			return [{ timestamp: maximum.timestamp, value: Math.max(maximum.value, average) }];
+		}).sort((a, b) => a.timestamp - b.timestamp);
+	}
+
+	_historyScale(points) {
+		const values = points.map((point) => point.value).filter((value) => Number.isFinite(value) && value >= 0).sort((a, b) => a - b);
+		if (!values.length) return 1;
+		const percentile = values[Math.min(values.length - 1, Math.floor(values.length * .98))];
+		const peak = values[values.length - 1];
+		const target = Math.max(percentile * 1.15, peak * .55, 1);
+		const magnitude = 10 ** Math.floor(Math.log10(target));
+		const normalized = target / magnitude;
+		const step = normalized <= 2 ? .5 : normalized <= 5 ? 1 : 2;
+		return Math.ceil(normalized / step) * step * magnitude;
+	}
+
+	_historyPath(points, start, end, maximum, width, height) {
+		if (!points.length || maximum <= 0) return "";
+		return points.map((point, index) => {
+			const x = ((point.timestamp - start) / Math.max(end - start, 1)) * width;
+			const y = height - Math.min(Math.max(point.value / maximum, 0), 1) * height;
+			return `${index ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`;
+		}).join(" ");
+	}
+
+	_bandwidthHistoryChart(downloadEntity, uploadEntity) {
+		if (!this._config.show_bandwidth_history) return "";
+		const hours = Math.min(Math.max(Number.parseInt(this._config.history_hours, 10) || 8, 1), 168);
+		const end = Date.now();
+		const start = end - hours * 3600000;
+		const download = this._bandwidthHistory.series[downloadEntity] || [];
+		const upload = this._bandwidthHistory.series[uploadEntity] || [];
+		const points = [...download, ...upload];
+		if (!points.length) {
+			return `<div class="bandwidth-history"><div class="history-title"><span>${this._t("bandwidth_history")}</span><small>${hours} h</small></div><div class="history-empty">${this._t("no_history")}</div></div>`;
+		}
+		const width = 600, height = 150;
+		const reducedDownload = this._downsampleHistory(download, start, end);
+		const reducedUpload = this._downsampleHistory(upload, start, end);
+		const visiblePoints = [...reducedDownload, ...reducedUpload];
+		const roundedMaximum = this._historyScale(visiblePoints);
+		const downloadPath = this._historyPath(reducedDownload, start, end, roundedMaximum, width, height);
+		const uploadPath = this._historyPath(reducedUpload, start, end, roundedMaximum, width, height);
+		const formatter = new Intl.DateTimeFormat(this._getLanguage(), { hour: "2-digit", minute: "2-digit" });
+		const labels = [0, .25, .5, .75, 1].map((ratio) => `<span style="left:${ratio * 100}%">${formatter.format(new Date(start + (end - start) * ratio))}</span>`).join("");
+		const gridLines = [0, .25, .5, .75, 1].map((ratio) => `<line x1="0" y1="${height * ratio}" x2="${width}" y2="${height * ratio}"></line>`).join("");
+		const yLabels = [1, .75, .5, .25, 0].map((ratio) => `<span>${this._escape(new Intl.NumberFormat(this._getLanguage(), { maximumFractionDigits: 0 }).format(roundedMaximum * ratio))}</span>`).join("");
+		return `<div class="bandwidth-history"><div class="history-title"><span>${this._t("bandwidth_history")}</span><small>${hours} h</small></div><div class="history-chart"><div class="history-y">${yLabels}</div><svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-label="${this._escape(this._t("bandwidth_history"))}">${gridLines}${downloadPath ? `<path class="history-download" d="${downloadPath}"></path>` : ""}${uploadPath ? `<path class="history-upload" d="${uploadPath}"></path>` : ""}</svg><div class="history-x">${labels}</div></div><div class="history-legend">${downloadEntity ? `<span class="download"><i></i>${this._t("download")}</span>` : ""}${uploadEntity ? `<span class="upload"><i></i>${this._t("upload")}</span>` : ""}<em>Mbit/s</em></div></div>`;
+	}
+
 	_internetSection(e, info) {
 		const latencyMetric = this._latencyMetric(e.latency);
 		const metrics = [
@@ -779,9 +909,12 @@ class FreeboxCard extends HTMLElement {
 			latencyMetric,
 		].filter(Boolean).join("");
 		const metricsClass = latencyMetric ? "internet-metrics" : "internet-metrics no-latency";
+		const historyChart = this._bandwidthHistoryChart(e.download, e.upload);
+		setTimeout(() => this._loadBandwidthHistory(e.download, e.upload), 0);
 		return `<section class="panel internet-panel">
 			<div class="section-title"><ha-icon icon="mdi:speedometer"></ha-icon>${this._t("internet")}</div>
 			${metrics ? `<div class="${metricsClass}">${metrics}</div>` : ""}
+			${historyChart}
 		</section>`;
 	}
 
@@ -1068,6 +1201,28 @@ class FreeboxCard extends HTMLElement {
 			.section-title ha-icon { --mdc-icon-size:18px; color:var(--freebox-accent); }
 			.internet-metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
 			.internet-metrics.no-latency { grid-template-columns:repeat(2,minmax(0,1fr)); }
+			.bandwidth-history { margin-top:12px; padding-top:12px; border-top:1px solid var(--divider-color); }
+			.history-title { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; color:var(--secondary-text-color); font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
+			.history-title small { font-size:9px; font-weight:600; }
+			.history-chart { position:relative; display:grid; grid-template-columns:30px minmax(0,1fr); grid-template-rows:135px 20px; min-width:0; }
+			.history-chart svg { width:100%; height:135px; overflow:visible; }
+			.history-chart line { stroke:var(--divider-color); stroke-width:.8; stroke-dasharray:3 5; opacity:.7; vector-effect:non-scaling-stroke; }
+			.history-chart path { fill:none; stroke-width:2; stroke-linejoin:round; stroke-linecap:round; vector-effect:non-scaling-stroke; }
+			.history-download { stroke:#2196f3; }
+			.history-upload { stroke:#4caf50; }
+			.history-y { display:flex; flex-direction:column; justify-content:space-between; padding:0 0 1px; color:var(--secondary-text-color); font-size:9px; text-align:right; }
+			.history-y span { padding-right:6px; }
+			.history-x { position:relative; grid-column:2; height:18px; color:var(--secondary-text-color); font-size:9px; }
+			.history-x span { position:absolute; top:4px; transform:translateX(-50%); white-space:nowrap; }
+			.history-x span:first-child { transform:none; }
+			.history-x span:last-child { transform:translateX(-100%); }
+			.history-legend { display:flex; align-items:center; justify-content:center; gap:14px; margin-top:3px; color:var(--secondary-text-color); font-size:9px; }
+			.history-legend span { display:inline-flex; align-items:center; gap:4px; }
+			.history-legend i { width:12px; height:2px; border-radius:1px; }
+			.history-legend .download i { background:#2196f3; }
+			.history-legend .upload i { background:#4caf50; }
+			.history-legend em { font-style:normal; }
+			.history-empty { display:grid; place-items:center; min-height:90px; color:var(--secondary-text-color); font-size:11px; }
 			.internet-metric { position:relative; display:grid; grid-template-columns:40px minmax(0,1fr); grid-template-rows:min-content min-content; column-gap:8px; align-items:center; min-width:0; padding:7px 8px; border:1px solid var(--divider-color); border-radius:12px; color:var(--primary-text-color); background:var(--card-background-color); font:inherit; text-align:left; }
 			.internet-metric svg { grid-row:1 / 3; width:40px; height:40px; transform:rotate(-90deg); }
 			.metric-icon { position:absolute; left:8px; top:50%; display:flex; align-items:center; justify-content:center; width:40px; height:40px; transform:translateY(-50%); pointer-events:none; }
@@ -1214,7 +1369,7 @@ class FreeboxCardEditor extends HTMLElement {
 			device_id: "Freebox device", name: "Card name", language: "Card display language",
 			download_bandwidth: "Download bandwidth (Mbit/s)", upload_bandwidth: "Upload bandwidth (Mbit/s)", latency_entity: "Latency sensor",
 			general: "General", card_layout: "Card layout", internet_settings: "Internet settings",
-			show_header: "Show card icon and title", show_card_background: "Show card background",
+			show_header: "Show card icon and title", show_card_background: "Show card background", show_bandwidth_history: "Show bandwidth history", history_hours: "History period (hours)",
 			internet: "Bandwidth", system: "System", hardware: "Hardware", telephony: "Telephony", devices: "Device trackers", debug: "Debug",
 			move_up: "Move up", move_down: "Move down", auto: "Auto", english: "English", french: "French",
 		},
@@ -1222,7 +1377,7 @@ class FreeboxCardEditor extends HTMLElement {
 			device_id: "Appareil Freebox", name: "Nom de la carte", language: "Langue d’affichage de la carte",
 			download_bandwidth: "Débit descendant (Mbit/s)", upload_bandwidth: "Débit montant (Mbit/s)", latency_entity: "Capteur de latence",
 			general: "Général", card_layout: "Disposition de la carte", internet_settings: "Paramètres Internet",
-			show_header: "Afficher l’icône et le titre de la carte", show_card_background: "Afficher le fond de la carte",
+			show_header: "Afficher l’icône et le titre de la carte", show_card_background: "Afficher le fond de la carte", show_bandwidth_history: "Afficher l’historique de la bande passante", history_hours: "Période de l’historique (heures)",
 			internet: "Bande passante", system: "Système", hardware: "Matériel", telephony: "Téléphonie", devices: "Suivis d’appareils", debug: "Debug",
 			move_up: "Monter", move_down: "Descendre", auto: "Auto", english: "Anglais", french: "Français",
 		},
@@ -1241,6 +1396,7 @@ class FreeboxCardEditor extends HTMLElement {
 		"show_debug",
 		"show_header",
 		"show_card_background",
+		"show_bandwidth_history",
 		"show_devices",
 		"show_telephony",
 	]);
@@ -1296,10 +1452,12 @@ class FreeboxCardEditor extends HTMLElement {
 			: (this._hass?.locale?.language || this._hass?.language || "en").split("-")[0];
 		return FreeboxCardEditor.EDITOR_TRANSLATIONS[language] ? language : "en";
 	}
+
 	_et(key) {
 		const language = this._getEditorLanguage();
 		return FreeboxCardEditor.EDITOR_TRANSLATIONS[language]?.[key] || FreeboxCardEditor.EDITOR_TRANSLATIONS.en[key] || key;
 	}
+
 	_sectionSummary(icon, title) {
 		return `<summary><span class="section-title"><ha-icon icon="${icon}"></ha-icon>${title}</span></summary>`;
 	}
@@ -1334,7 +1492,10 @@ class FreeboxCardEditor extends HTMLElement {
 		const order = [...new Set([...configured, ...definitions.map((section) => section.key)])].filter((key) => byKey.has(key));
 		return order.map((key, index) => {
 			const section = byKey.get(key);
-			return `<div class="section-order-row" data-section-key="${key}"><ha-icon icon="${section.icon}"></ha-icon><span>${section.label}</span><ha-switch data-config="${section.visibility}"></ha-switch><button type="button" data-section-move="up" ${index === 0 ? "disabled" : ""} title="${this._et("move_up")}" aria-label="${this._et("move_up")}: ${section.label}"><ha-icon icon="mdi:chevron-up"></ha-icon></button><button type="button" data-section-move="down" ${index === order.length - 1 ? "disabled" : ""} title="${this._et("move_down")}" aria-label="${this._et("move_down")}: ${section.label}"><ha-icon icon="mdi:chevron-down"></ha-icon></button></div>`;
+			const suboptions = key === "internet"
+				? `<div class="section-suboptions" data-parent-section="internet">${this._switchRow("show_bandwidth_history", this._et("show_bandwidth_history"))}<label>${this._et("history_hours")}<input data-config="history_hours" type="number" min="1" max="168" step="1" placeholder="8"></label></div>`
+				: "";
+			return `<div class="section-order-item"><div class="section-order-row" data-section-key="${key}"><ha-icon icon="${section.icon}"></ha-icon><span>${section.label}</span><ha-switch data-config="${section.visibility}"></ha-switch><button type="button" data-section-move="up" ${index === 0 ? "disabled" : ""} title="${this._et("move_up")}" aria-label="${this._et("move_up")}: ${section.label}"><ha-icon icon="mdi:chevron-up"></ha-icon></button><button type="button" data-section-move="down" ${index === order.length - 1 ? "disabled" : ""} title="${this._et("move_down")}" aria-label="${this._et("move_down")}: ${section.label}"><ha-icon icon="mdi:chevron-down"></ha-icon></button></div>${suboptions}</div>`;
 		}).join("");
 	}
 
@@ -1365,6 +1526,11 @@ class FreeboxCardEditor extends HTMLElement {
 		  .switch-row { display:flex; align-items:center; justify-content:space-between; gap:16px; min-height:42px; }
 		  .switch-label { color:var(--primary-text-color); font-size:14px; }
 		  .section-order-list { display:grid; gap:8px; }
+		  .section-order-item { display:grid; gap:0; }
+		  .section-suboptions { display:grid; gap:6px; margin:-1px 10px 0 32px; padding:8px 10px 10px; border:1px solid var(--divider-color); border-top:0; border-radius:0 0 9px 9px; background:var(--secondary-background-color); }
+		  .section-suboptions .switch-row { min-height:36px; }
+		  .section-suboptions label { gap:4px; }
+		  .section-suboptions input { min-height:36px; }
 		  .layout-options { display:grid; gap:4px; padding-bottom:10px; border-bottom:1px solid var(--divider-color); }
 		  .section-order-row { display:grid; grid-template-columns:24px minmax(0,1fr) auto 32px 32px; align-items:center; gap:8px; min-height:42px; padding:6px 8px; border:1px solid var(--divider-color); border-radius:9px; }
 		  .section-order-row > ha-icon { --mdc-icon-size:18px; color:var(--secondary-text-color); }
