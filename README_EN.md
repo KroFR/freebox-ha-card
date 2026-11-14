@@ -4,7 +4,7 @@
 [![HACS Validation](https://github.com/KroFR/freebox-ha-card/actions/workflows/hacs.yaml/badge.svg)](https://github.com/KroFR/freebox-ha-card/actions/workflows/hacs.yaml)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-# 📡 Freebox Card
+# 🛜 Freebox Card
 
 [Version Française](README.md)
 
