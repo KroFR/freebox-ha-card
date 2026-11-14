@@ -1705,6 +1705,7 @@ class FreeboxCardEditor extends HTMLElement {
 			.map((entity) => entity.entity_id)
 			.sort((a, b) => a.localeCompare(b))[0] || "";
 	}
+
 	_initializeEntityPickers() {
 		this.querySelectorAll("ha-entity-picker[data-config]").forEach((picker) => {
 			picker.hass = this._hass;
@@ -1894,6 +1895,7 @@ window.customCards.push({
 	name: "Freebox Card",
 	description: "Responsive card for the Home Assistant Freebox integration.",
 	preview: true,
+	documentationURL: "https://github.com/KroFR/freebox-ha-card",
 });
 
 console.info(`%c FREEBOX-CARD %c v${CARD_VERSION} `, "color:white;background:#d71920;font-weight:700", "color:#d71920;background:#f5f5f5");
