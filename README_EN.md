@@ -43,14 +43,16 @@ A responsive Lovelace card for [Home Assistant](https://www.home-assistant.io/) 
 ## ✨ Features
 
 - Automatic Freebox device detection from the Home Assistant device and entity registries
+- Automatic average latency sensor detection from the Ping integration
 - Download, upload, and optional latency monitoring
+- Bandwidth history chart for download and upload traffic with a configurable time range
 - System details including WAN status, model, hardware version, firmware, serial number, connection type, MAC addresses, IP addresses, and uptime
 - Hardware monitoring for storage, RAID, fans, and temperatures when exposed by the integration
 - Wi-Fi toggle and Freebox reboot actions with confirmation
 - Telephony section with missed call count and reset action
 - Device tracker summary for connected, disconnected, disabled, and total devices
 - Expandable lists using the icons of the corresponding device tracker entities
-- Reorderable and individually hideable card sections
+- Drag-and-drop section reordering with individually configurable visibility
 - Optional card header and background
 - English and French support, with automatic language detection
 - Optional debug section with configuration and tracker export to text files
@@ -102,9 +104,11 @@ The card attempts to select the Freebox automatically by locating a `device_trac
 | `device_id` | string | no | auto-detected | Home Assistant device ID of the Freebox |
 | `name` | string | no | `Freebox` | Card title |
 | `language` | string | no | `auto` | `auto`, `en`, or `fr` |
-| `latency_entity` | string | no | — | Optional latency sensor |
+| `latency_entity` | string | no | auto-detected | Latency sensor. If not configured, the card automatically selects the first Ping integration sensor containing `average` or `moyen` in its name |
 | `download_bandwidth` | number | no | — | Maximum download bandwidth in Mbit/s, used to calculate the gauge percentage |
 | `upload_bandwidth` | number | no | — | Maximum upload bandwidth in Mbit/s, used to calculate the gauge percentage |
+| `show_bandwidth_history` | boolean | no | `true` | Show the bandwidth history chart |
+| `history_hours` | number | no | `8` | Number of hours displayed in the bandwidth history chart, from 1 to 168 |
 | `section_order` | list | no | see below | Display order for card sections |
 | `show_internet` | boolean | no | `true` | Show bandwidth information |
 | `show_system` | boolean | no | `true` | Show system information and actions |
@@ -126,6 +130,20 @@ section_order:
   - devices
   - debug
 ```
+
+## 📈 Bandwidth history
+
+The Bandwidth section includes a history chart for download and upload traffic.
+
+The chart:
+
+- Uses Home Assistant history data from the detected Freebox download and upload sensors
+- Displays the last 8 hours by default
+- Supports a configurable period from 1 to 168 hours
+- Uses adaptive scaling and data aggregation to improve readability
+- Can be disabled independently from the Bandwidth section
+
+The history settings are available under **Card layout > Bandwidth** in the visual editor.
 
 ## 🛠️ Troubleshooting
 
