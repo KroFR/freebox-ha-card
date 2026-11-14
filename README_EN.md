@@ -42,22 +42,15 @@ A responsive Lovelace card for [Home Assistant](https://www.home-assistant.io/) 
 
 ## ✨ Features
 
-- Automatic Freebox device detection from the Home Assistant device and entity registries
-- Automatic average latency sensor detection from the Ping integration
-- Download, upload, and optional latency monitoring
-- Bandwidth history chart for download and upload traffic with a configurable time range
-- System details including WAN status, model, hardware version, firmware, serial number, connection type, MAC addresses, IP addresses, and uptime
-- Hardware monitoring for storage, RAID, fans, and temperatures when exposed by the integration
-- Wi-Fi toggle and Freebox reboot actions with confirmation
-- Telephony section with missed call count and reset action
-- Device tracker summary for connected, disconnected, disabled, and total devices
-- Expandable lists using the icons of the corresponding device tracker entities
-- Drag-and-drop section reordering with individually configurable visibility
-- Optional card header and background
-- English and French support, with automatic language detection
-- Optional debug section with configuration and tracker export to text files
-- Responsive light and dark theme support
-- Visual editor for configuration without YAML
+- Automatic Freebox and latency sensor detection via the Ping integration
+- Download, upload, latency, and bandwidth history monitoring
+- System information: WAN, model, hardware, firmware, network, and uptime
+- Hardware monitoring: storage, RAID, fans, and temperatures
+- Wi-Fi control and Freebox reboot with confirmation
+- Telephony with missed call monitoring and reset
+- Connected, disconnected, and disabled device tracking with detailed lists
+- Customizable interface with reorderable sections, visibility controls, and optional header and background
+- Responsive visual editor with light/dark themes, English and French support, and diagnostic tools
 
 ## ℹ️ Requirements
 
