@@ -64,6 +64,7 @@ A responsive Lovelace card for [Home Assistant](https://www.home-assistant.io/) 
 - Home Assistant 2024.11 or newer recommended
 - Official Home Assistant [Freebox integration](https://www.home-assistant.io/integrations/freebox) configured
 - A Freebox device with a `device_tracker.freebox` or `device_tracker.freebox_*` entity
+- Optional: [Ping (ICMP)](https://www.home-assistant.io/integrations/ping) integration configured for automatic latency detection and display
 
 Some sections appear only when the required entities are available. Hardware and telephony content depends on the entities exposed by your Freebox model and integration version.
 
