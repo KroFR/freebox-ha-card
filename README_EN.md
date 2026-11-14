@@ -14,7 +14,7 @@ A responsive Lovelace card for [Home Assistant](https://www.home-assistant.io/) 
 
 | Light Theme | Dark Theme |
 |---|---|
-| <img width="460" height="121" alt="image" src="https://github.com/user-attachments/assets/b22eb89e-24b9-48b9-a0cb-b5fc72d8d52a" /> | <img width="461" height="123" alt="image" src="https://github.com/user-attachments/assets/f5ab4a1b-4615-4345-b2cc-6835cb35fe3c" /> |
+| <img width="500" height="343" alt="image" src="https://github.com/user-attachments/assets/1c1e5ef8-e156-4f1b-806c-fce00c163c5e" /> | <img width="506" height="347" alt="image" src="https://github.com/user-attachments/assets/01d43fbe-5693-41c1-b06c-462c3b8a2bd7" /> |
 
 ### System
 
