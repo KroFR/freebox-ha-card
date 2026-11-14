@@ -64,6 +64,7 @@ Une carte Lovelace responsive pour [Home Assistant](https://www.home-assistant.i
 - Home Assistant 2024.11 ou version plus récente recommandé
 - Intégration [Freebox officielle](https://www.home-assistant.io/integrations/freebox) configurée dans Home Assistant
 - Appareil Freebox possédant une entité `device_tracker.freebox` ou `device_tracker.freebox_*`
+- Optionnel : intégration [Ping (ICMP)](https://www.home-assistant.io/integrations/ping) configurée pour la détection automatique et l’affichage de la latence
 
 Certaines sections apparaissent uniquement lorsque les entités nécessaires sont disponibles. Le contenu matériel et téléphonique dépend des entités exposées par votre modèle de Freebox et la version de l’intégration.
 
@@ -130,6 +131,20 @@ section_order:
   - devices
   - debug
 ```
+
+## 📈 Historique de la bande passante
+
+La section **Bande passante** inclut un graphique affichant l’historique des débits descendant et montant.
+
+Le graphique :
+
+- Utilise les données historiques Home Assistant des capteurs de débit descendant et montant détectés pour la Freebox
+- Affiche les 8 dernières heures par défaut
+- Permet de configurer une période de 1 à 168 heures
+- Utilise une échelle adaptative et une agrégation des données pour améliorer la lisibilité
+- Peut être masqué indépendamment de la section **Bande passante**
+
+Les paramètres de l’historique sont disponibles dans **Disposition de la carte > Bande passante** dans le configurateur visuel.
 
 ## 🛠️ Dépannage
 
