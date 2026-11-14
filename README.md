@@ -42,22 +42,15 @@ Une carte Lovelace responsive pour [Home Assistant](https://www.home-assistant.i
 
 ## ✨ Fonctionnalités
 
-- Détection automatique de la Freebox depuis les registres d’appareils et d’entités de Home Assistant
-- Détection automatique du capteur de latence moyenne depuis l’intégration Ping
-- Suivi du débit descendant, du débit montant et, en option, de la latence
-- Graphique d’historique des débits descendant et montant avec période configurable
-- Informations système : état WAN, modèle, version matérielle, firmware, numéro de série, type de connexion, adresses MAC et IP, disponibilité
-- Suivi matériel du stockage, du RAID, des ventilateurs et des températures lorsque ces entités sont exposées
-- Actions pour activer ou désactiver le Wi-Fi et redémarrer la Freebox, avec confirmation
-- Section téléphonie avec nombre d’appels manqués et action de réinitialisation
-- Résumé des appareils connectés, déconnectés, désactivés et du nombre total
-- Listes repliables utilisant les icônes des entités `device_tracker`
-- Sections déplaçables et masquables individuellement
-- En-tête et fond de la carte facultatifs
-- Français et anglais, avec détection automatique de la langue
-- Section Debug facultative avec export de la configuration et des trackers dans des fichiers texte
-- Interface responsive compatible avec les thèmes clair et sombre
-- Configurateur visuel, sans YAML obligatoire
+- Détection automatique de la Freebox et du capteur de latence via l’intégration Ping
+- Suivi des débits descendant et montant, de la latence et de leur historique
+- Informations système : WAN, modèle, hardware, firmware, réseau et disponibilité
+- Surveillance du matériel : stockage, RAID, ventilateurs et températures
+- Contrôle du Wi-Fi et redémarrage de la Freebox avec confirmation
+- Téléphonie avec suivi et réinitialisation des appels manqués
+- Suivi des appareils connectés, déconnectés et désactivés avec listes détaillées
+- Interface personnalisable : sections réorganisables, visibilité, en-tête et fond configurables
+- Configurateur visuel responsive, thèmes clair/sombre, français et anglais, avec outils de diagnostic
 
 ## ℹ️ Prérequis
 
