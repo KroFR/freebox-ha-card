@@ -5,7 +5,7 @@
  *
  * License: MIT
  */
-const CARD_VERSION = "2026.11.1";
+const CARD_VERSION = "2026.11.2";
 
 /* ---------------------------------------------------------------------- */
 /*  Languages                                                             */
@@ -42,7 +42,10 @@ const TRANSLATIONS = {
 			connected_devices_list: "Connected devices",
 			away_devices_list: "Disconnected devices",
 			download: "Download",
+			live_bandwidth: "Real-time bandwidth",
 			bandwidth_history: "Bandwidth history",
+			history_method: "5 min average",
+			history_max: "Max",
 			no_history: "No history available",
 			latency: "Latency",
 			excellent: "Excellent",
@@ -81,6 +84,8 @@ const TRANSLATIONS = {
 			upload_bandwidth: "Upload bandwidth (Mbit/s)",
 			latency_entity: "Latency sensor",
 			live_metrics: "Live metrics",
+			show_live_metrics: "Show real-time bandwidth metrics",
+			show_history_maximums: "Show maximum values",
 			history_settings: "History",
 			general: "General",
 			card_layout: "Card layout",
@@ -130,7 +135,10 @@ const TRANSLATIONS = {
 			connected_devices_list: "Appareils connectés",
 			away_devices_list: "Appareils déconnectés",
 			download: "Téléchargement",
+			live_bandwidth: "Bande passante en temps réel",
 			bandwidth_history: "Historique de la bande passante",
+			history_method: "Moyenne sur 5 min",
+			history_max: "Max",
 			no_history: "Aucun historique disponible",
 			latency: "Latence",
 			excellent: "Excellent",
@@ -168,6 +176,8 @@ const TRANSLATIONS = {
 			upload_bandwidth: "Débit montant (Mbit/s)",
 			latency_entity: "Capteur de latence",
 			live_metrics: "Mesures en temps réel",
+			show_live_metrics: "Afficher les mesures de bande passante en temps réel",
+			show_history_maximums: "Afficher les valeurs maximales",
 			history_settings: "Historique",
 			general: "Général",
 			card_layout: "Disposition de la carte",
@@ -249,6 +259,8 @@ class FreeboxCard extends HTMLElement {
 		show_header: true,
 		show_card_background: true,
 		show_bandwidth_history: true,
+		show_live_metrics: true,
+		show_history_maximums: true,
 		history_hours: "8",
 	};
 
@@ -276,7 +288,7 @@ class FreeboxCard extends HTMLElement {
 		const source = config && typeof config === "object" ? config : {};
 		const safeConfig = {};
 		const stringFields = ["name", "device_id", "latency_entity", "download_bandwidth", "upload_bandwidth", "history_hours"];
-		const booleanFields = ["show_internet", "show_system", "show_hardware", "show_telephony", "show_devices", "show_debug", "show_header", "show_card_background", "show_bandwidth_history"];
+		const booleanFields = ["show_internet", "show_system", "show_hardware", "show_telephony", "show_devices", "show_debug", "show_header", "show_card_background", "show_bandwidth_history", "show_live_metrics", "show_history_maximums"];
 		for (const key of stringFields)
 			if (typeof source[key] === "string") safeConfig[key] = source[key].slice(0, 512);
 		for (const key of booleanFields)
@@ -769,6 +781,54 @@ class FreeboxCard extends HTMLElement {
 				this._trackerListsOpen[element.dataset.trackerList] = element.open;
 			});
 		});
+		this._initializeBandwidthHistoryTooltip();
+	}
+
+	_initializeBandwidthHistoryTooltip() {
+		const chart = this.shadowRoot?.querySelector(".history-chart[data-history-start]");
+		const overlay = chart?.querySelector(".history-hover-overlay");
+		const tooltip = chart?.querySelector(".history-tooltip");
+		const cursor = chart?.querySelector(".history-cursor");
+		const downloadDot = chart?.querySelector(".history-hover-download");
+		const uploadDot = chart?.querySelector(".history-hover-upload");
+		if (!chart || !overlay || !tooltip || !cursor) return;
+		const start = Number(chart.dataset.historyStart);
+		const end = Number(chart.dataset.historyEnd);
+		const maximum = Number(chart.dataset.historyMaximum);
+		const download = this._historyHoverData?.download || [];
+		const upload = this._historyHoverData?.upload || [];
+		const nearest = (series, timestamp) => series.length ? series.reduce((best, point) =>
+			Math.abs(point.timestamp - timestamp) < Math.abs(best.timestamp - timestamp) ? point : best, series[0]) : null;
+		const number = new Intl.NumberFormat(this._getLanguage(), { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+		const time = new Intl.DateTimeFormat(this._getLanguage(), { hour: "2-digit", minute: "2-digit" });
+		const hide = () => { tooltip.hidden = true; cursor.hidden = true; if (downloadDot) downloadDot.hidden = true; if (uploadDot) uploadDot.hidden = true; };
+		overlay.addEventListener("pointermove", (event) => {
+			const rect = overlay.getBoundingClientRect();
+			if (!rect.width || !Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(maximum)) return;
+			const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+			const timestamp = start + ratio * (end - start);
+			const d = nearest(download, timestamp);
+			const u = nearest(upload, timestamp);
+			const reference = [d, u].filter(Boolean).sort((a, b) => Math.abs(a.timestamp - timestamp) - Math.abs(b.timestamp - timestamp))[0];
+			if (!reference) return hide();
+			const xRatio = (reference.timestamp - start) / Math.max(end - start, 1);
+			const x = rect.left - chart.getBoundingClientRect().left + xRatio * rect.width;
+			cursor.style.left = `${x}px`; cursor.hidden = false;
+			const placeDot = (dot, point) => { if (!dot || !point) return; dot.hidden = false; dot.style.left = `${x}px`; dot.style.top = `${Math.min(1, Math.max(0, 1 - point.value / maximum)) * 135}px`; };
+			placeDot(downloadDot, d); placeDot(uploadDot, u);
+			tooltip.innerHTML = `<strong>${this._escape(time.format(new Date(reference.timestamp)))}</strong>${d ? `<span><i class="download"></i>${this._t("download")}: <b>${number.format(d.value)} Mbit/s</b></span>` : ""}${u ? `<span><i class="upload"></i>${this._t("upload")}: <b>${number.format(u.value)} Mbit/s</b></span>` : ""}`;
+			tooltip.hidden = false;
+			const chartRect = chart.getBoundingClientRect();
+			const gap = 14;
+			const plotLeft = 42;
+			const maxLeft = Math.max(plotLeft, chartRect.width - tooltip.offsetWidth - 4);
+			const roomRight = chartRect.width - x;
+			const tooltipLeft = roomRight >= tooltip.offsetWidth + gap
+				? Math.min(x + gap, maxLeft)
+				: Math.max(plotLeft, x - tooltip.offsetWidth - gap);
+			tooltip.style.left = `${tooltipLeft}px`; tooltip.style.top = "6px";
+		});
+		overlay.addEventListener("pointerleave", hide);
 	}
 
 	_formatSpeed(entityId) {
@@ -859,28 +919,41 @@ class FreeboxCard extends HTMLElement {
 		return [];
 	}
 
+	_convertBandwidthToMbit(value, entityId) {
+		const unit = String(this._hass?.states?.[entityId]?.attributes?.unit_of_measurement || "Mbit/s").trim();
+		if (/^gbit\/s$/i.test(unit) || /^gbps$/i.test(unit)) return value * 1000;
+		if (/^kbit\/s$/i.test(unit) || /^kbps$/i.test(unit)) return value / 1000;
+		if (/^bit\/s$/i.test(unit) || /^bps$/i.test(unit)) return value / 1000000;
+		if (/^GB\/s$/.test(unit)) return value * 8000;
+		if (/^MB\/s$/.test(unit)) return value * 8;
+		if (/^kB\/s$/.test(unit)) return value * 0.008;
+		if (/^B\/s$/.test(unit)) return value * 0.000008;
+		return value;
+	}
+
 	_normalizeBandwidthHistory(history, entityId) {
 		const rawSeries = this._getHistorySeries(history, entityId);
 		const parsed = [];
 		let rejected = 0;
 		for (const item of rawSeries) {
-			const value = Number.parseFloat(item?.state ?? item?.s);
+			const rawValue = Number.parseFloat(item?.state ?? item?.s);
 			const rawTimestamp = item?.last_updated ?? item?.last_changed ?? item?.lu ?? item?.lc;
 			let timestamp;
 			if (typeof rawTimestamp === "number") timestamp = rawTimestamp < 100000000000 ? rawTimestamp * 1000 : rawTimestamp;
 			else timestamp = Date.parse(rawTimestamp);
-			if (!Number.isFinite(value) || !Number.isFinite(timestamp)) {
+			if (!Number.isFinite(rawValue) || !Number.isFinite(timestamp)) {
 				rejected += 1;
 				continue;
 			}
-			parsed.push({ timestamp, value: Math.max(0, value) });
+			parsed.push({ timestamp, value: Math.max(0, rawValue) });
 		}
-		console.info("[freebox-card][history] Parsed series", { entityId, received: rawSeries.length, parsed: parsed.length, rejected, firstRaw: rawSeries[0] ?? null, lastRaw: rawSeries.at(-1) ?? null });
+		console.info("[freebox-card][history] Parsed series", { entityId, received: rawSeries.length, parsed: parsed.length, rejected, unit: this._hass?.states?.[entityId]?.attributes?.unit_of_measurement, firstRaw: rawSeries[0] ?? null, lastRaw: rawSeries.at(-1) ?? null });
 		return parsed.sort((x, y) => x.timestamp - y.timestamp);
 	}
+
 	async _loadBandwidthHistory(downloadEntity, uploadEntity) {
-		console.info("[freebox-card][history] Loader called", { downloadEntity, uploadEntity, enabled: this._config.show_bandwidth_history, hasCallWS: Boolean(this._hass?.callWS) });
-		if (!this._hass?.callWS || !this._config.show_bandwidth_history) return;
+		console.info("[freebox-card][history] Loader called", { downloadEntity, uploadEntity, enabled: this._config.show_bandwidth_history, hasCallApi: Boolean(this._hass?.callApi) });
+		if (!this._hass?.callApi || !this._config.show_bandwidth_history) return;
 		const entityIds = [downloadEntity, uploadEntity].filter((id) => this._isValidEntityId(id));
 		if (!entityIds.length) {
 			console.warn("[freebox-card][history] No valid bandwidth entities", { downloadEntity, uploadEntity });
@@ -894,9 +967,17 @@ class FreeboxCard extends HTMLElement {
 		try {
 			const end = new Date();
 			const start = new Date(end.getTime() - hours * 3600000);
-			const request = { type: "history/history_during_period", start_time: start.toISOString(), end_time: end.toISOString(), entity_ids: entityIds, no_attributes: true, significant_changes_only: false };
+			// Match ApexCharts Card: use Home Assistant's REST history endpoint.
+			// This returns the same state representation consumed by ApexCharts,
+			// instead of the compact WebSocket history payload.
+			const query = new URLSearchParams({
+				filter_entity_id: entityIds.join(","),
+				end_time: end.toISOString(),
+				significant_changes_only: "0",
+			});
+			const request = `history/period/${start.toISOString()}?${query.toString()}`;
 			console.info("[freebox-card][history] Request", request);
-			const history = await this._hass.callWS(request);
+			const history = await this._hass.callApi("GET", request);
 			console.info("[freebox-card][history] Raw response", history);
 			const series = Object.fromEntries(entityIds.map((id) => [id, this._normalizeBandwidthHistory(history, id)]));
 			console.info("[freebox-card][history] Normalized counts", Object.fromEntries(entityIds.map((id) => [id, series[id].length])));
@@ -908,32 +989,43 @@ class FreeboxCard extends HTMLElement {
 		this._render();
 	}
 
-	_downsampleHistory(points, start, end, buckets = 180) {
-		if (points.length <= buckets) return points;
-		const span = Math.max(end - start, 1);
-		const grouped = Array.from({ length: buckets }, () => []);
-		for (const point of points) {
-			const index = Math.min(buckets - 1, Math.max(0, Math.floor((point.timestamp - start) / span * buckets)));
-			grouped[index].push(point);
+	_groupBandwidthHistory(points, start, end, duration = 300000) {
+		const visible = points.filter((point) =>
+			point.timestamp >= start && point.timestamp <= end && Number.isFinite(point.value));
+		if (!visible.length) return [];
+
+		// Match ApexCharts Card group_by: duration: 5min, func: avg.
+		// Buckets are anchored to the beginning of the visible graph period.
+		const buckets = new Map();
+		for (const point of visible) {
+			const bucketIndex = Math.floor((point.timestamp - start) / duration);
+			const bucket = buckets.get(bucketIndex) || { sum: 0, count: 0 };
+			bucket.sum += point.value;
+			bucket.count += 1;
+			buckets.set(bucketIndex, bucket);
 		}
-		return grouped.flatMap((bucket) => {
-			if (!bucket.length) return [];
-			const maximum = bucket.reduce((best, point) => point.value > best.value ? point : best, bucket[0]);
-			const average = bucket.reduce((sum, point) => sum + point.value, 0) / bucket.length;
-			return [{ timestamp: maximum.timestamp, value: Math.max(maximum.value, average) }];
-		}).sort((a, b) => a.timestamp - b.timestamp);
+		return [...buckets.entries()]
+			.sort(([a], [b]) => a - b)
+			.map(([bucketIndex, bucket]) => ({
+				timestamp: Math.min(start + bucketIndex * duration + duration / 2, end),
+				value: bucket.sum / bucket.count,
+			}));
 	}
 
 	_historyScale(points) {
-		const values = points.map((point) => point.value).filter((value) => Number.isFinite(value) && value >= 0).sort((a, b) => a - b);
-		if (!values.length) return 1;
-		const percentile = values[Math.min(values.length - 1, Math.floor(values.length * .98))];
-		const peak = values[values.length - 1];
-		const target = Math.max(percentile * 1.15, peak * .55, 1);
-		const magnitude = 10 ** Math.floor(Math.log10(target));
-		const normalized = target / magnitude;
-		const step = normalized <= 2 ? .5 : normalized <= 5 ? 1 : 2;
-		return Math.ceil(normalized / step) * step * magnitude;
+		const peak = points.reduce((maximum, point) =>
+			Number.isFinite(point.value) ? Math.max(maximum, point.value) : maximum, 0);
+		if (peak <= 0) return { maximum: 10, ticks: 4 };
+
+		// ApexCharts rounds the visible maximum to a readable upper bound.
+		const magnitude = 10 ** Math.floor(Math.log10(peak));
+		const precision = magnitude >= 10 ? magnitude / 10 : magnitude;
+		// Reserve 20% of the plot height above the highest value for the Max label.
+		// This keeps the label above the curve while preventing overlap with the title.
+		const targetMaximum = peak / 0.8;
+		const maximum = Math.max(precision, Math.ceil(targetMaximum / precision) * precision);
+		const ticks = maximum <= 40 ? Math.max(2, Math.min(4, Math.round(maximum / 10))) : 4;
+		return { maximum, ticks };
 	}
 
 	_historyPath(points, start, end, maximum, width, height) {
@@ -945,6 +1037,13 @@ class FreeboxCard extends HTMLElement {
 		}).join(" ");
 	}
 
+	_historyAreaPath(path, points, start, end, width, height) {
+		if (!path || !points.length) return "";
+		const firstX = ((points[0].timestamp - start) / Math.max(end - start, 1)) * width;
+		const lastX = ((points.at(-1).timestamp - start) / Math.max(end - start, 1)) * width;
+		return `${path} L${lastX.toFixed(1)},${height} L${firstX.toFixed(1)},${height} Z`;
+	}
+
 	_bandwidthHistoryChart(downloadEntity, uploadEntity) {
 		if (!this._config.show_bandwidth_history) return "";
 		const hours = Math.min(Math.max(Number.parseInt(this._config.history_hours, 10) || 8, 1), 168);
@@ -952,22 +1051,62 @@ class FreeboxCard extends HTMLElement {
 		const start = end - hours * 3600000;
 		const download = this._bandwidthHistory.series[downloadEntity] || [];
 		const upload = this._bandwidthHistory.series[uploadEntity] || [];
-		const points = [...download, ...upload];
+		const points = [...download, ...upload].filter((point) => point.timestamp >= start && point.timestamp <= end);
 		if (!points.length) {
-			return `<div class="bandwidth-history"><div class="history-title"><span>${this._t("bandwidth_history")}</span><small>${hours} h</small></div><div class="history-empty">${this._t("no_history")}</div></div>`;
+			return `<div class="bandwidth-history${this._config.show_live_metrics === false ? " no-live-metrics" : ""}"><div class="history-title"><span>${this._t("bandwidth_history")}</span><small>${hours} h</small></div><div class="history-empty">${this._t("no_history")}</div></div>`;
 		}
 		const width = 600, height = 150;
-		const reducedDownload = this._downsampleHistory(download, start, end);
-		const reducedUpload = this._downsampleHistory(upload, start, end);
-		const visiblePoints = [...reducedDownload, ...reducedUpload];
-		const roundedMaximum = this._historyScale(visiblePoints);
-		const downloadPath = this._historyPath(reducedDownload, start, end, roundedMaximum, width, height);
-		const uploadPath = this._historyPath(reducedUpload, start, end, roundedMaximum, width, height);
+		const groupedDownload = this._groupBandwidthHistory(download, start, end, 5 * 60 * 1000);
+		const groupedUpload = this._groupBandwidthHistory(upload, start, end, 5 * 60 * 1000);
+		const visiblePoints = [...groupedDownload, ...groupedUpload];
+		this._historyHoverData = { download: groupedDownload, upload: groupedUpload };
+		const downloadMax = groupedDownload.reduce((maximum, point) => Math.max(maximum, point.value), 0);
+		const uploadMax = groupedUpload.reduce((maximum, point) => Math.max(maximum, point.value), 0);
+		const valueFormatter = new Intl.NumberFormat(this._getLanguage(), { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+		const scale = this._historyScale(visiblePoints);
+		const roundedMaximum = scale.maximum;
+		const downloadPath = this._historyPath(groupedDownload, start, end, roundedMaximum, width, height);
+		const uploadPath = this._historyPath(groupedUpload, start, end, roundedMaximum, width, height);
+		const downloadArea = this._historyAreaPath(downloadPath, groupedDownload, start, end, width, height);
+		const uploadArea = this._historyAreaPath(uploadPath, groupedUpload, start, end, width, height);
+		const maxMarker = (series, maximumValue, cssClass) => {
+			if (!series.length || maximumValue <= 0) return "";
+			const point = series.reduce((best, item) => item.value > best.value ? item : best, series[0]);
+			const x = ((point.timestamp - start) / Math.max(end - start, 1)) * width;
+			const y = height - Math.min(Math.max(point.value / roundedMaximum, 0), 1) * height;
+			const label = valueFormatter.format(maximumValue);
+			const labelWidth = Math.max(32, label.length * 6.3 + 12);
+			const labelX = Math.min(Math.max(x, labelWidth / 2 + 2), width - labelWidth / 2 - 2);
+			// The scale reserves enough headroom to keep this label strictly above the curve.
+			const labelBottom = y - 9;
+			const labelTop = labelBottom - 15;
+			return `<g class="history-max-marker ${cssClass}"><line class="history-max-stem" x1="${x.toFixed(1)}" y1="${labelBottom.toFixed(1)}" x2="${x.toFixed(1)}" y2="${(y - 4).toFixed(1)}"></line><rect class="history-max-label-bg" x="${(labelX - labelWidth / 2).toFixed(1)}" y="${labelTop.toFixed(1)}" width="${labelWidth.toFixed(1)}" height="15" rx="3"></rect><text class="history-max-label" x="${labelX.toFixed(1)}" y="${(labelTop + 11).toFixed(1)}" text-anchor="middle">${this._escape(label)}</text><circle class="history-max-point" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.5"></circle></g>`;
+		};
+		const showMaximums = this._config.show_history_maximums !== false;
+		const downloadMaxMarker = showMaximums ? maxMarker(groupedDownload, downloadMax, "download") : "";
+		const uploadMaxMarker = showMaximums ? maxMarker(groupedUpload, uploadMax, "upload") : "";
+
 		const formatter = new Intl.DateTimeFormat(this._getLanguage(), { hour: "2-digit", minute: "2-digit" });
-		const labels = [0, .25, .5, .75, 1].map((ratio) => `<span style="left:${ratio * 100}%">${formatter.format(new Date(start + (end - start) * ratio))}</span>`).join("");
-		const gridLines = [0, .25, .5, .75, 1].map((ratio) => `<line x1="0" y1="${height * ratio}" x2="${width}" y2="${height * ratio}"></line>`).join("");
-		const yLabels = [1, .75, .5, .25, 0].map((ratio) => `<span>${this._escape(new Intl.NumberFormat(this._getLanguage(), { maximumFractionDigits: 0 }).format(roundedMaximum * ratio))}</span>`).join("");
-		return `<div class="bandwidth-history"><div class="history-title"><span>${this._t("bandwidth_history")}</span><small>${hours} h</small></div><div class="history-chart"><div class="history-y">${yLabels}</div><svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-label="${this._escape(this._t("bandwidth_history"))}">${gridLines}${downloadPath ? `<path class="history-download" d="${downloadPath}"></path>` : ""}${uploadPath ? `<path class="history-upload" d="${uploadPath}"></path>` : ""}</svg><div class="history-x">${labels}</div></div><div class="history-legend">${downloadEntity ? `<span class="download"><i></i>${this._t("download")}</span>` : ""}${uploadEntity ? `<span class="upload"><i></i>${this._t("upload")}</span>` : ""}<em>Mbit/s</em></div></div>`;
+		// Adapt X-axis density to the displayed period. Keep roughly 6 to 9 labels.
+		// Examples: 8 h -> 1 h, 24 h -> 4 h, 48 h -> 6 h, 7 d -> 24 h.
+		const hourStep = hours <= 10 ? 1 : hours <= 18 ? 2 : hours <= 30 ? 4 : hours <= 60 ? 6 : hours <= 96 ? 12 : 24;
+		const firstFullHour = Math.ceil(start / 3600000) * 3600000;
+		let firstTick = firstFullHour;
+		while (new Date(firstTick).getHours() % hourStep !== 0) firstTick += 3600000;
+		const hourTicks = [];
+		for (let timestamp = firstTick; timestamp <= end; timestamp += hourStep * 3600000) hourTicks.push(timestamp);
+		const labels = hourTicks.map((timestamp) => {
+			const ratio = (timestamp - start) / Math.max(end - start, 1);
+			return `<span style="left:${ratio * 100}%">${formatter.format(new Date(timestamp))}</span>`;
+		}).join("");
+		const yRatios = Array.from({ length: scale.ticks + 1 }, (_, index) => index / scale.ticks);
+		const horizontalGrid = yRatios.map((ratio) => `<line x1="0" y1="${height * ratio}" x2="${width}" y2="${height * ratio}"></line>`).join("");
+		const verticalGrid = hourTicks.map((timestamp) => {
+			const x = ((timestamp - start) / Math.max(end - start, 1)) * width;
+			return `<line class="history-hour-grid" x1="${x.toFixed(1)}" y1="0" x2="${x.toFixed(1)}" y2="${height}"></line>`;
+		}).join("");
+		const yLabels = [...yRatios].reverse().map((ratio) => `<span>${this._escape(new Intl.NumberFormat(this._getLanguage(), { maximumFractionDigits: 1 }).format(roundedMaximum * ratio))}</span>`).join("");
+		return `<div class="bandwidth-history${this._config.show_live_metrics === false ? " no-live-metrics" : ""}"><div class="history-title"><span>${this._t("bandwidth_history")}</span><small>${this._t("history_method")} · ${hours} h</small></div><div class="history-chart" data-history-start="${start}" data-history-end="${end}" data-history-maximum="${roundedMaximum}"><div class="history-unit">Mbit/s</div><div class="history-y">${yLabels}</div><svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-label="${this._escape(this._t("bandwidth_history"))}"><defs><linearGradient id="freebox-download-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#2196f3" stop-opacity=".42"></stop><stop offset="100%" stop-color="#2196f3" stop-opacity=".04"></stop></linearGradient><linearGradient id="freebox-upload-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#4caf50" stop-opacity=".36"></stop><stop offset="100%" stop-color="#4caf50" stop-opacity=".03"></stop></linearGradient></defs>${horizontalGrid}${verticalGrid}${downloadArea ? `<path class="history-area history-download-area" d="${downloadArea}"></path>` : ""}${uploadArea ? `<path class="history-area history-upload-area" d="${uploadArea}"></path>` : ""}${downloadPath ? `<path class="history-line history-download" d="${downloadPath}"></path>` : ""}${uploadPath ? `<path class="history-line history-upload" d="${uploadPath}"></path>` : ""}${downloadMaxMarker}${uploadMaxMarker}</svg><div class="history-hover-overlay" aria-label="Bandwidth history values"></div><div class="history-cursor" hidden></div><span class="history-hover-dot history-hover-download" hidden></span><span class="history-hover-dot history-hover-upload" hidden></span><div class="history-tooltip" hidden></div><div class="history-x">${labels}</div></div></div>`;
 	}
 
 	_internetSection(e, info) {
@@ -978,11 +1117,15 @@ class FreeboxCard extends HTMLElement {
 			latencyMetric,
 		].filter(Boolean).join("");
 		const metricsClass = latencyMetric ? "internet-metrics" : "internet-metrics no-latency";
+		const showLiveMetrics = this._config.show_live_metrics !== false;
+		const liveMetrics = showLiveMetrics && metrics
+			? `<div class="live-metrics-block"><div class="subsection-title">${this._t("live_bandwidth")}</div><div class="${metricsClass}">${metrics}</div></div>`
+			: "";
 		const historyChart = this._bandwidthHistoryChart(e.download, e.upload);
 		setTimeout(() => this._loadBandwidthHistory(e.download, e.upload), 0);
 		return `<section class="panel internet-panel">
 			<div class="section-title"><ha-icon icon="mdi:speedometer"></ha-icon>${this._t("internet")}</div>
-			${metrics ? `<div class="${metricsClass}">${metrics}</div>` : ""}
+			${liveMetrics}
 			${historyChart}
 		</section>`;
 	}
@@ -1268,29 +1411,53 @@ class FreeboxCard extends HTMLElement {
 			.internet-panel, .detail-panel { padding:15px; }
 			.section-title { display:flex; align-items:center; gap:8px; margin-bottom:13px; color:var(--secondary-text-color); font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
 			.section-title ha-icon { --mdc-icon-size:18px; color:var(--freebox-accent); }
+			.subsection-title { margin-bottom:8px; color:var(--secondary-text-color); font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
 			.internet-metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
 			.internet-metrics.no-latency { grid-template-columns:repeat(2,minmax(0,1fr)); }
 			.bandwidth-history { margin-top:12px; padding-top:12px; border-top:1px solid var(--divider-color); }
+			.bandwidth-history.no-live-metrics { margin-top:0; padding-top:0; border-top:0; }
 			.history-title { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; color:var(--secondary-text-color); font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
 			.history-title small { font-size:9px; font-weight:600; }
-			.history-chart { position:relative; display:grid; grid-template-columns:30px minmax(0,1fr); grid-template-rows:135px 20px; min-width:0; }
-			.history-chart svg { width:100%; height:135px; overflow:visible; }
+			.history-chart { position:relative; display:grid; grid-template-columns:42px minmax(0,1fr); grid-template-rows:135px 24px; min-width:0; margin-top:14px; }
+			.history-chart svg { width:100%; height:135px; overflow:hidden; }
+			.history-hover-overlay { position:absolute; z-index:4; left:42px; right:0; top:0; height:135px; cursor:crosshair; }
+			.history-cursor { position:absolute; z-index:3; top:0; height:135px; border-left:1px dashed var(--secondary-text-color); pointer-events:none; opacity:.75; }
+			.history-hover-dot { position:absolute; z-index:5; width:7px; height:7px; border:2px solid var(--card-background-color); border-radius:50%; transform:translate(-50%,-50%); pointer-events:none; }
+			.history-hover-download { background:#2196f3; }
+			.history-hover-upload { background:#4caf50; }
+			.history-tooltip { position:absolute; z-index:6; min-width:145px; padding:7px 9px; border:1px solid var(--divider-color); border-radius:7px; color:var(--primary-text-color); background:var(--ha-card-background,var(--card-background-color)); box-shadow:0 3px 12px rgba(0,0,0,.28); font-size:10px; pointer-events:none; }
+			.history-tooltip strong, .history-tooltip span { display:block; }
+			.history-tooltip strong { margin-bottom:5px; }
+			.history-tooltip span { margin-top:3px; white-space:nowrap; }
+			.history-tooltip i { display:inline-block; width:7px; height:7px; margin-right:5px; border-radius:50%; }
+			.history-tooltip i.download { background:#2196f3; }
+			.history-tooltip i.upload { background:#4caf50; }
 			.history-chart line { stroke:var(--divider-color); stroke-width:.8; stroke-dasharray:3 5; opacity:.7; vector-effect:non-scaling-stroke; }
-			.history-chart path { fill:none; stroke-width:2; stroke-linejoin:round; stroke-linecap:round; vector-effect:non-scaling-stroke; }
+			.history-chart .history-line { fill:none; stroke-width:2; stroke-linejoin:round; stroke-linecap:round; vector-effect:non-scaling-stroke; }
+			.history-chart .history-area { stroke:none; }
+			.history-download-area { fill:url(#freebox-download-fill); }
+			.history-upload-area { fill:url(#freebox-upload-fill); }
+			.history-hour-grid { opacity:.3; }
 			.history-download { stroke:#2196f3; }
 			.history-upload { stroke:#4caf50; }
+			.history-max-marker { pointer-events:none; }
+			.history-max-marker .history-max-point { stroke:none; }
+			.history-max-marker.download .history-max-point { fill:#2196f3; }
+			.history-max-marker.upload .history-max-point { fill:#4caf50; }
+			.history-max-marker .history-max-stem { stroke-width:1; stroke-dasharray:none; opacity:.9; vector-effect:non-scaling-stroke; }
+			.history-max-marker.download .history-max-stem { stroke:#2196f3; }
+			.history-max-marker.upload .history-max-stem { stroke:#4caf50; }
+			.history-max-marker .history-max-label-bg { stroke:none; opacity:.96; }
+			.history-max-marker.download .history-max-label-bg { fill:#2196f3; }
+			.history-max-marker.upload .history-max-label-bg { fill:#4caf50; }
+			.history-max-marker .history-max-label { fill:#fff; font-size:10px; font-weight:700; dominant-baseline:auto; }
+			.history-unit { position:absolute; left:0; top:0; z-index:1; display:flex; align-items:center; justify-content:center; width:14px; height:135px; color:var(--primary-text-color); font-size:11px; font-weight:700; line-height:1; letter-spacing:0; writing-mode:vertical-rl; transform:rotate(180deg); white-space:nowrap; }
 			.history-y { display:flex; flex-direction:column; justify-content:space-between; padding:0 0 1px; color:var(--secondary-text-color); font-size:9px; text-align:right; }
-			.history-y span { padding-right:6px; }
-			.history-x { position:relative; grid-column:2; height:18px; color:var(--secondary-text-color); font-size:9px; }
-			.history-x span { position:absolute; top:4px; transform:translateX(-50%); white-space:nowrap; }
+			.history-y span { padding-right:7px; }
+			.history-x { position:relative; grid-column:2; height:22px; overflow:visible; color:var(--secondary-text-color); font-size:9px; }
+			.history-x span { position:absolute; top:5px; transform:translateX(-50%); white-space:nowrap; }
 			.history-x span:first-child { transform:none; }
 			.history-x span:last-child { transform:translateX(-100%); }
-			.history-legend { display:flex; align-items:center; justify-content:center; gap:14px; margin-top:3px; color:var(--secondary-text-color); font-size:9px; }
-			.history-legend span { display:inline-flex; align-items:center; gap:4px; }
-			.history-legend i { width:12px; height:2px; border-radius:1px; }
-			.history-legend .download i { background:#2196f3; }
-			.history-legend .upload i { background:#4caf50; }
-			.history-legend em { font-style:normal; }
 			.history-empty { display:grid; place-items:center; min-height:90px; color:var(--secondary-text-color); font-size:11px; }
 			.internet-metric { position:relative; display:grid; grid-template-columns:40px minmax(0,1fr); grid-template-rows:min-content min-content; column-gap:8px; align-items:center; min-width:0; padding:7px 8px; border:1px solid var(--divider-color); border-radius:12px; color:var(--primary-text-color); background:var(--card-background-color); font:inherit; text-align:left; }
 			.internet-metric svg { grid-row:1 / 3; width:40px; height:40px; transform:rotate(-90deg); }
@@ -1446,6 +1613,8 @@ class FreeboxCardEditor extends HTMLElement {
 		"show_header",
 		"show_card_background",
 		"show_bandwidth_history",
+		"show_live_metrics",
+		"show_history_maximums",
 		"show_devices",
 		"show_telephony",
 	]);
@@ -1543,14 +1712,18 @@ class FreeboxCardEditor extends HTMLElement {
 				? `<div class="section-suboptions">
 					<div class="option-group">
 						<div class="option-group-title"><ha-icon icon="mdi:gauge"></ha-icon><span>${this._et("live_metrics")}</span></div>
-						<div class="option-group-content">
-							<div class="bandwidth-latency">${this._entitySelector("latency_entity", this._et("latency_entity"), "sensor")}</div>
+						<div class="option-group-content live-options">
+							${this._switchRow("show_live_metrics", this._et("show_live_metrics"))}
 							<div class="bandwidth-limits"><label>${this._et("download_bandwidth")}<input data-config="download_bandwidth" type="number" min="0" step="1" placeholder="10000"></label><label>${this._et("upload_bandwidth")}<input data-config="upload_bandwidth" type="number" min="0" step="1" placeholder="900"></label></div>
+							<div class="bandwidth-latency">${this._entitySelector("latency_entity", this._et("latency_entity"), "sensor")}</div>
 						</div>
 					</div>
 					<div class="option-group">
 						<div class="option-group-title"><ha-icon icon="mdi:chart-line"></ha-icon><span>${this._et("history_settings")}</span></div>
-						<div class="option-group-content history-options">${this._switchRow("show_bandwidth_history", this._et("show_bandwidth_history"))}<label>${this._et("history_hours")}<input data-config="history_hours" type="number" min="1" max="168" step="1" placeholder="8"></label></div>
+						<div class="option-group-content history-options">
+							<div class="history-primary">${this._switchRow("show_bandwidth_history", this._et("show_bandwidth_history"))}<label>${this._et("history_hours")}<input data-config="history_hours" type="number" min="1" max="168" step="1" placeholder="8"></label></div>
+							<div class="history-secondary">${this._switchRow("show_history_maximums", this._et("show_history_maximums"))}</div>
+						</div>
 					</div>
 				</div>`
 				: "";
@@ -1603,8 +1776,13 @@ class FreeboxCardEditor extends HTMLElement {
 		  .option-group-title { display:flex; align-items:center; gap:7px; padding:8px 10px; border-bottom:1px solid var(--divider-color); color:var(--secondary-text-color); font-size:11px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; }
 		  .option-group-title ha-icon { --mdc-icon-size:16px; color:var(--primary-color); }
 		  .option-group-content { display:grid; gap:12px; padding:10px; }
-		  .history-options { grid-template-columns:minmax(0,1fr) 120px; align-items:end; }
-		  .history-options .switch-row { align-self:center; }
+		  .live-options { gap:10px; }
+		  .bandwidth-latency { padding-top:10px; border-top:1px solid var(--divider-color); }
+		  .history-options { display:grid; grid-template-columns:1fr; gap:0; padding:0; }
+		  .history-primary { display:grid; grid-template-columns:1fr; gap:8px; padding:10px 10px 4px; }
+		  .history-primary .switch-row { align-self:auto; }
+		  .history-primary label { width:100%; }
+		  .history-secondary { padding:4px 10px 6px; }
 		  .bandwidth-latency, .bandwidth-latency .field { min-width:0; width:100%; }
 		  .bandwidth-latency ha-entity-picker { display:block; width:100%; min-width:0; }
 		  .bandwidth-limits { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
@@ -1613,7 +1791,7 @@ class FreeboxCardEditor extends HTMLElement {
 		  .section-suboptions input { min-height:36px; }
 		  .layout-options { display:grid; gap:4px; padding-bottom:10px; border-bottom:1px solid var(--divider-color); }
 		  ha-switch { flex-shrink:0; }
-		  @media (max-width:600px) { .grid, .switch-grid, .bandwidth-limits, .history-options { grid-template-columns:1fr; } }
+		  @media (max-width:600px) { .grid, .switch-grid, .bandwidth-limits { grid-template-columns:1fr; } }
 		</style>
 		<div class="editor">
 		  <details class="section"${this._config?.device_id ? "" : " open"}>
