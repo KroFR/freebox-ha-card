@@ -7,46 +7,15 @@
  */
 const CARD_VERSION = "2026.11.1";
 
-/**
- * Return the Freebox devices exposed by Home Assistant's entity registry.
- */
-function getFreeboxDeviceIds(hass) {
-	if (!hass) return [];
-	const entities = Object.values(hass.entities || {});
-	const devices = Object.values(hass.devices || {});
-	const candidates = [];
-
-	for (const entity of entities) {
-		if (!entity?.device_id || !entity.entity_id?.startsWith("device_tracker.")) continue;
-		const device = devices.find((item) => item.id === entity.device_id);
-		if (!device) continue;
-
-		const entityText = String(entity.entity_id || "").toLowerCase();
-		const deviceText = [device.name, device.name_by_user, device.model, device.manufacturer]
-			.filter(Boolean).join(" ").toLowerCase();
-		const looksLikeFreeboxTracker = /^device_tracker\.freebox(?:$|_)/i.test(entity.entity_id);
-		const hasFreeboxDeviceIdentity = /freebox/i.test(deviceText);
-		if (!looksLikeFreeboxTracker || !hasFreeboxDeviceIdentity) continue;
-
-		let score = 100;
-		if (entityText === "device_tracker.freebox") score += 100;
-		if (/freebox/i.test(String(device.name || ""))) score += 40;
-		if (/freebox/i.test(String(device.model || ""))) score += 30;
-		if (/freebox/i.test(String(device.manufacturer || ""))) score += 20;
-		candidates.push({ deviceId: device.id, score });
-	}
-
-	return candidates
-		.sort((a, b) => b.score - a.score || a.deviceId.localeCompare(b.deviceId))
-		.map((candidate) => candidate.deviceId);
-}
-
 /* ---------------------------------------------------------------------- */
-/*  Main card                                                             */
+/*  Languages                                                             */
 /* ---------------------------------------------------------------------- */
-class FreeboxCard extends HTMLElement {
-	static TRANSLATIONS = {
-		en: {
+const TRANSLATIONS = {
+	en: {
+		meta: {
+			name: "English"
+		},
+		card: {
 			name: "Freebox",
 			connected: "Connected",
 			offline: "Offline",
@@ -101,10 +70,40 @@ class FreeboxCard extends HTMLElement {
 			no_entities: "No compatible Freebox entities were found.",
 			unavailable: "Unavailable",
 			language: "Language",
-				auto: "Auto",
+			auto: "Auto",
 			debug: "DEBUG",
 		},
-		fr: {
+		editor: {
+			device_id: "Freebox device",
+			name: "Card name",
+			language: "Card display language",
+			download_bandwidth: "Download bandwidth (Mbit/s)",
+			upload_bandwidth: "Upload bandwidth (Mbit/s)",
+			latency_entity: "Latency sensor",
+			live_metrics: "Live metrics",
+			history_settings: "History",
+			general: "General",
+			card_layout: "Card layout",
+			show_header: "Show card icon and title",
+			show_card_background: "Show card background",
+			show_bandwidth_history: "Show bandwidth history",
+			history_hours: "History period (hours)",
+			internet: "Bandwidth",
+			system: "System",
+			hardware: "Hardware",
+			telephony: "Telephony",
+			devices: "Device trackers",
+			debug: "Debug",
+			drag_section: "Drag to reorder",
+			section_options: "Section options",
+			auto: "Auto",
+		},
+	},
+	fr: {
+		meta: {
+			name: "Français"
+		},
+		card: {
 			name: "Freebox",
 			connected: "Connectée",
 			offline: "Hors ligne",
@@ -161,8 +160,82 @@ class FreeboxCard extends HTMLElement {
 			language: "Langue",
 			debug: "DEBUG",
 		},
-	};
+		editor: {
+			device_id: "Appareil Freebox",
+			name: "Nom de la carte",
+			language: "Langue d’affichage de la carte",
+			download_bandwidth: "Débit descendant (Mbit/s)",
+			upload_bandwidth: "Débit montant (Mbit/s)",
+			latency_entity: "Capteur de latence",
+			live_metrics: "Mesures en temps réel",
+			history_settings: "Historique",
+			general: "Général",
+			card_layout: "Disposition de la carte",
+			show_header: "Afficher l’icône et le titre de la carte",
+			show_card_background: "Afficher le fond de la carte",
+			show_bandwidth_history: "Afficher l’historique de la bande passante",
+			history_hours: "Période de l’historique (heures)",
+			internet: "Bande passante",
+			system: "Système",
+			hardware: "Matériel",
+			telephony: "Téléphonie",
+			devices: "Suivis d’appareils",
+			debug: "Debug",
+			drag_section: "Faire glisser pour réorganiser",
+			section_options: "Options de la section",
+			auto: "Auto",
+		},
+	},
+};
+function resolveLanguage(hass, configuredLanguage = "auto") {
+	if (configuredLanguage !== "auto" && TRANSLATIONS[configuredLanguage]) return configuredLanguage;
+	const language = (hass?.locale?.language || hass?.language || "en").toLowerCase().split("-")[0];
+	return TRANSLATIONS[language] ? language : "en";
+}
 
+function translate(language, path) {
+	const readPath = (source) => path.split(".").reduce((value, key) => value?.[key], source);
+	return String(readPath(TRANSLATIONS[language]) ?? readPath(TRANSLATIONS.en) ?? path);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Return the Freebox devices exposed by Home Assistant's entity registry */
+/* ---------------------------------------------------------------------- */
+function getFreeboxDeviceIds(hass) {
+	if (!hass) return [];
+	const entities = Object.values(hass.entities || {});
+	const devices = Object.values(hass.devices || {});
+	const candidates = [];
+
+	for (const entity of entities) {
+		if (!entity?.device_id || !entity.entity_id?.startsWith("device_tracker.")) continue;
+		const device = devices.find((item) => item.id === entity.device_id);
+		if (!device) continue;
+
+		const entityText = String(entity.entity_id || "").toLowerCase();
+		const deviceText = [device.name, device.name_by_user, device.model, device.manufacturer]
+			.filter(Boolean).join(" ").toLowerCase();
+		const looksLikeFreeboxTracker = /^device_tracker\.freebox(?:$|_)/i.test(entity.entity_id);
+		const hasFreeboxDeviceIdentity = /freebox/i.test(deviceText);
+		if (!looksLikeFreeboxTracker || !hasFreeboxDeviceIdentity) continue;
+
+		let score = 100;
+		if (entityText === "device_tracker.freebox") score += 100;
+		if (/freebox/i.test(String(device.name || ""))) score += 40;
+		if (/freebox/i.test(String(device.model || ""))) score += 30;
+		if (/freebox/i.test(String(device.manufacturer || ""))) score += 20;
+		candidates.push({ deviceId: device.id, score });
+	}
+
+	return candidates
+		.sort((a, b) => b.score - a.score || a.deviceId.localeCompare(b.deviceId))
+		.map((candidate) => candidate.deviceId);
+}
+
+/* ---------------------------------------------------------------------- */
+/*  Main card                                                             */
+/* ---------------------------------------------------------------------- */
+class FreeboxCard extends HTMLElement {
 	static FIELD_DEFAULTS = {
 		name: "",
 		language: "auto",
@@ -208,7 +281,7 @@ class FreeboxCard extends HTMLElement {
 			if (typeof source[key] === "string") safeConfig[key] = source[key].slice(0, 512);
 		for (const key of booleanFields)
 			if (typeof source[key] === "boolean") safeConfig[key] = source[key];
-		if (["auto", "en", "fr"].includes(source.language)) safeConfig.language = source.language;
+		if (source.language === "auto" || TRANSLATIONS[source.language]) safeConfig.language = source.language;
 		const allowedSections = new Set(FreeboxCard.FIELD_DEFAULTS.section_order);
 		if (Array.isArray(source.section_order))
 			safeConfig.section_order = [...new Set(source.section_order.filter((key) => allowedSections.has(key)))];
@@ -227,15 +300,11 @@ class FreeboxCard extends HTMLElement {
 	}
 
 	_getLanguage() {
-		const selected = this._config?.language;
-		const language = selected && selected !== "auto"
-			? selected
-			: (this._hass?.locale?.language || this._hass?.language || "en").split("-")[0];
-		return FreeboxCard.TRANSLATIONS[language] ? language : "en";
+		return resolveLanguage(this._hass, this._config?.language || "auto");
 	}
 
 	_t(key) {
-		return FreeboxCard.TRANSLATIONS[this._getLanguage()][key] || FreeboxCard.TRANSLATIONS.en[key] || key;
+		return translate(this._getLanguage(), `card.${key}`);
 	}
 
 	_getSelectedDeviceId() {
@@ -1364,29 +1433,9 @@ class FreeboxCard extends HTMLElement {
 /*  Visual editor                                                         */
 /* ---------------------------------------------------------------------- */
 class FreeboxCardEditor extends HTMLElement {
-	static EDITOR_TRANSLATIONS = {
-		en: {
-			device_id: "Freebox device", name: "Card name", language: "Card display language",
-			download_bandwidth: "Download bandwidth (Mbit/s)", upload_bandwidth: "Upload bandwidth (Mbit/s)", latency_entity: "Latency sensor",
-			general: "General", card_layout: "Card layout", internet_settings: "Internet settings",
-			show_header: "Show card icon and title", show_card_background: "Show card background", show_bandwidth_history: "Show bandwidth history", history_hours: "History period (hours)",
-			internet: "Bandwidth", system: "System", hardware: "Hardware", telephony: "Telephony", devices: "Device trackers", debug: "Debug",
-			move_up: "Move up", move_down: "Move down", auto: "Auto", english: "English", french: "French",
-		},
-		fr: {
-			device_id: "Appareil Freebox", name: "Nom de la carte", language: "Langue d’affichage de la carte",
-			download_bandwidth: "Débit descendant (Mbit/s)", upload_bandwidth: "Débit montant (Mbit/s)", latency_entity: "Capteur de latence",
-			general: "Général", card_layout: "Disposition de la carte", internet_settings: "Paramètres Internet",
-			show_header: "Afficher l’icône et le titre de la carte", show_card_background: "Afficher le fond de la carte", show_bandwidth_history: "Afficher l’historique de la bande passante", history_hours: "Période de l’historique (heures)",
-			internet: "Bande passante", system: "Système", hardware: "Matériel", telephony: "Téléphonie", devices: "Suivis d’appareils", debug: "Debug",
-			move_up: "Monter", move_down: "Descendre", auto: "Auto", english: "Anglais", french: "Français",
-		},
-	};
-
 	static SECTION_ICONS = {
 		general: "mdi:cog-outline",
 		layout: "mdi:view-dashboard-edit-outline",
-		internet_settings: "mdi:tune-variant",
 	};
 
 	static VISIBILITY_FIELDS = new Set([
@@ -1415,6 +1464,8 @@ class FreeboxCardEditor extends HTMLElement {
 		this._autoDetectedDeviceId = "";
 		this._detectionDevices = [];
 		this._detectionLoading = false;
+		this._layoutSectionsOpen = new Set();
+		this._draggedSectionKey = "";
 	}
 
 	setConfig(config) {
@@ -1446,16 +1497,11 @@ class FreeboxCardEditor extends HTMLElement {
 	}
 
 	_getEditorLanguage() {
-		const selected = this._config?.language;
-		const language = selected && selected !== "auto"
-			? selected
-			: (this._hass?.locale?.language || this._hass?.language || "en").split("-")[0];
-		return FreeboxCardEditor.EDITOR_TRANSLATIONS[language] ? language : "en";
+		return resolveLanguage(this._hass, this._config?.language || "auto");
 	}
 
 	_et(key) {
-		const language = this._getEditorLanguage();
-		return FreeboxCardEditor.EDITOR_TRANSLATIONS[language]?.[key] || FreeboxCardEditor.EDITOR_TRANSLATIONS.en[key] || key;
+		return translate(this._getEditorLanguage(), `editor.${key}`);
 	}
 
 	_sectionSummary(icon, title) {
@@ -1490,12 +1536,25 @@ class FreeboxCardEditor extends HTMLElement {
 		const byKey = new Map(definitions.map((section) => [section.key, section]));
 		const configured = Array.isArray(this._config?.section_order) ? this._config.section_order : [];
 		const order = [...new Set([...configured, ...definitions.map((section) => section.key)])].filter((key) => byKey.has(key));
-		return order.map((key, index) => {
+		return order.map((key) => {
 			const section = byKey.get(key);
-			const suboptions = key === "internet"
-				? `<div class="section-suboptions" data-parent-section="internet">${this._switchRow("show_bandwidth_history", this._et("show_bandwidth_history"))}<label>${this._et("history_hours")}<input data-config="history_hours" type="number" min="1" max="168" step="1" placeholder="8"></label></div>`
+			const hasOptions = key === "internet";
+			const options = hasOptions
+				? `<div class="section-suboptions">
+					<div class="option-group">
+						<div class="option-group-title"><ha-icon icon="mdi:gauge"></ha-icon><span>${this._et("live_metrics")}</span></div>
+						<div class="option-group-content">
+							<div class="bandwidth-latency">${this._entitySelector("latency_entity", this._et("latency_entity"), "sensor")}</div>
+							<div class="bandwidth-limits"><label>${this._et("download_bandwidth")}<input data-config="download_bandwidth" type="number" min="0" step="1" placeholder="10000"></label><label>${this._et("upload_bandwidth")}<input data-config="upload_bandwidth" type="number" min="0" step="1" placeholder="900"></label></div>
+						</div>
+					</div>
+					<div class="option-group">
+						<div class="option-group-title"><ha-icon icon="mdi:chart-line"></ha-icon><span>${this._et("history_settings")}</span></div>
+						<div class="option-group-content history-options">${this._switchRow("show_bandwidth_history", this._et("show_bandwidth_history"))}<label>${this._et("history_hours")}<input data-config="history_hours" type="number" min="1" max="168" step="1" placeholder="8"></label></div>
+					</div>
+				</div>`
 				: "";
-			return `<div class="section-order-item"><div class="section-order-row" data-section-key="${key}"><ha-icon icon="${section.icon}"></ha-icon><span>${section.label}</span><ha-switch data-config="${section.visibility}"></ha-switch><button type="button" data-section-move="up" ${index === 0 ? "disabled" : ""} title="${this._et("move_up")}" aria-label="${this._et("move_up")}: ${section.label}"><ha-icon icon="mdi:chevron-up"></ha-icon></button><button type="button" data-section-move="down" ${index === order.length - 1 ? "disabled" : ""} title="${this._et("move_down")}" aria-label="${this._et("move_down")}: ${section.label}"><ha-icon icon="mdi:chevron-down"></ha-icon></button></div>${suboptions}</div>`;
+			return `<div class="section-order-item" data-section-key="${key}"><div class="section-order-row${hasOptions ? " expandable" : ""}" ${hasOptions ? `data-section-expand="${key}" role="button" tabindex="0" aria-expanded="${this._layoutSectionsOpen.has(key)}"` : ""}><span class="drag-handle" draggable="true" title="${this._et("drag_section")}" aria-label="${this._et("drag_section")}" tabindex="0"><ha-icon icon="mdi:drag"></ha-icon></span><ha-icon class="section-icon" icon="${section.icon}"></ha-icon><span class="section-label">${section.label}</span><ha-switch data-config="${section.visibility}"></ha-switch>${hasOptions ? `<span class="section-expand" aria-hidden="true"><ha-icon icon="mdi:chevron-down"></ha-icon></span>` : `<span class="section-expand-spacer"></span>`}</div>${hasOptions ? `<div class="section-options${this._layoutSectionsOpen.has(key) ? " open" : ""}">${options}</div>` : ""}</div>`;
 		}).join("");
 	}
 
@@ -1515,10 +1574,6 @@ class FreeboxCardEditor extends HTMLElement {
 		  .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); column-gap:14px; row-gap:18px; }
 		  .field, label { display:grid; min-width:0; gap:6px; color:var(--secondary-text-color); font-size:12px; }
 		  .entity-override ha-entity-picker { display:block; width:100%; min-width:0; }
-		  .internet-settings-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); column-gap:14px; row-gap:18px; }
-		  .latency-picker-row { grid-column:1 / -1; min-width:0; }
-		  .latency-picker-row .field { width:100%; }
-		  .latency-picker-row ha-entity-picker { width:100%; min-width:280px; }
 
 		  input { box-sizing:border-box; width:100%; min-height:42px; padding:8px 10px; color:var(--primary-text-color); background:var(--ha-card-background,var(--card-background-color)); border:1px solid var(--divider-color); border-radius:8px; font:inherit; }
 		  ha-selector { display:block; width:100%; }
@@ -1526,20 +1581,39 @@ class FreeboxCardEditor extends HTMLElement {
 		  .switch-row { display:flex; align-items:center; justify-content:space-between; gap:16px; min-height:42px; }
 		  .switch-label { color:var(--primary-text-color); font-size:14px; }
 		  .section-order-list { display:grid; gap:8px; }
-		  .section-order-item { display:grid; gap:0; }
-		  .section-suboptions { display:grid; gap:6px; margin:-1px 10px 0 32px; padding:8px 10px 10px; border:1px solid var(--divider-color); border-top:0; border-radius:0 0 9px 9px; background:var(--secondary-background-color); }
+		  .section-order-item { display:grid; overflow:hidden; border:1px solid var(--divider-color); border-radius:10px; background:var(--ha-card-background,var(--card-background-color)); transition:border-color .16s ease, opacity .16s ease, transform .16s ease; }
+		  .section-order-item.dragging { opacity:.45; }
+		  .section-order-item.drag-over { border-color:var(--primary-color); transform:translateY(1px); }
+		  .section-order-row { display:grid; grid-template-columns:28px 24px minmax(0,1fr) auto 32px; align-items:center; gap:8px; min-height:48px; padding:5px 8px; }
+		  .drag-handle { display:flex; align-items:center; justify-content:center; width:28px; height:34px; color:var(--secondary-text-color); cursor:grab; touch-action:none; }
+		  .drag-handle:active { cursor:grabbing; }
+		  .drag-handle ha-icon, .section-icon { --mdc-icon-size:18px; }
+		  .section-icon { color:var(--secondary-text-color); }
+		  .section-label { min-width:0; overflow:hidden; color:var(--primary-text-color); font-size:14px; text-overflow:ellipsis; white-space:nowrap; }
+		  .section-order-row.expandable { cursor:pointer; }
+		  .section-order-row.expandable:hover { background:color-mix(in srgb, var(--secondary-background-color) 55%, transparent); }
+		  .section-expand { display:flex; align-items:center; justify-content:center; width:32px; height:32px; color:var(--secondary-text-color); pointer-events:none; }
+		  .section-expand ha-icon { --mdc-icon-size:19px; transition:transform .18s ease; }
+		  .section-order-row[aria-expanded="true"] .section-expand ha-icon { transform:rotate(180deg); }
+		  .section-expand-spacer { width:32px; }
+		  .section-options { display:none; border-top:1px solid var(--divider-color); background:var(--secondary-background-color); }
+		  .section-options.open { display:block; }
+		  .section-suboptions { display:grid; gap:10px; padding:12px; }
+		  .option-group { overflow:hidden; border:1px solid var(--divider-color); border-radius:9px; background:var(--ha-card-background,var(--card-background-color)); }
+		  .option-group-title { display:flex; align-items:center; gap:7px; padding:8px 10px; border-bottom:1px solid var(--divider-color); color:var(--secondary-text-color); font-size:11px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; }
+		  .option-group-title ha-icon { --mdc-icon-size:16px; color:var(--primary-color); }
+		  .option-group-content { display:grid; gap:12px; padding:10px; }
+		  .history-options { grid-template-columns:minmax(0,1fr) 120px; align-items:end; }
+		  .history-options .switch-row { align-self:center; }
+		  .bandwidth-latency, .bandwidth-latency .field { min-width:0; width:100%; }
+		  .bandwidth-latency ha-entity-picker { display:block; width:100%; min-width:0; }
+		  .bandwidth-limits { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
 		  .section-suboptions .switch-row { min-height:36px; }
 		  .section-suboptions label { gap:4px; }
 		  .section-suboptions input { min-height:36px; }
 		  .layout-options { display:grid; gap:4px; padding-bottom:10px; border-bottom:1px solid var(--divider-color); }
-		  .section-order-row { display:grid; grid-template-columns:24px minmax(0,1fr) auto 32px 32px; align-items:center; gap:8px; min-height:42px; padding:6px 8px; border:1px solid var(--divider-color); border-radius:9px; }
-		  .section-order-row > ha-icon { --mdc-icon-size:18px; color:var(--secondary-text-color); }
-		  .section-order-row > span { color:var(--primary-text-color); font-size:14px; }
-		  .section-order-row button { display:flex; align-items:center; justify-content:center; width:32px; height:32px; padding:0; border:0; border-radius:7px; color:var(--secondary-text-color); background:var(--secondary-background-color); cursor:pointer; }
-		  .section-order-row button:disabled { opacity:.3; cursor:default; }
-		  .section-order-row button ha-icon { --mdc-icon-size:18px; }
 		  ha-switch { flex-shrink:0; }
-		  @media (max-width:600px) { .grid, .switch-grid, .internet-settings-grid { grid-template-columns:1fr; } .latency-picker-row { grid-column:1; } .latency-picker-row ha-entity-picker { min-width:0; } }
+		  @media (max-width:600px) { .grid, .switch-grid, .bandwidth-limits, .history-options { grid-template-columns:1fr; } }
 		</style>
 		<div class="editor">
 		  <details class="section"${this._config?.device_id ? "" : " open"}>
@@ -1555,16 +1629,6 @@ class FreeboxCardEditor extends HTMLElement {
 			<div class="section-content">
 			  <div class="layout-options">${this._switchRow("show_header", this._et("show_header"))}${this._switchRow("show_card_background", this._et("show_card_background"))}</div>
 			  <div class="section-order-list">${this._renderSectionOrder()}</div>
-			</div>
-		  </details>
-		  <details class="section">
-			${this._sectionSummary(FreeboxCardEditor.SECTION_ICONS.internet_settings, this._et("internet_settings"))}
-			<div class="section-content">
-			  <div class="internet-settings-grid">
-				<div class="latency-picker-row">${this._entitySelector("latency_entity", this._et("latency_entity"), "sensor")}</div>
-				<label>${this._et("download_bandwidth")}<input data-config="download_bandwidth" type="number" min="0" step="1" placeholder="10000"></label>
-				<label>${this._et("upload_bandwidth")}<input data-config="upload_bandwidth" type="number" min="0" step="1" placeholder="900"></label>
-			  </div>
 			</div>
 		  </details>
 		</div>`;
@@ -1618,8 +1682,7 @@ class FreeboxCardEditor extends HTMLElement {
 			} else if (key === "language") {
 				selector.selector = { select: { mode: "dropdown", options: [
 					{ value: "auto", label: this._et("auto") },
-					{ value: "en", label: this._et("english") },
-					{ value: "fr", label: this._et("french") },
+					...Object.entries(TRANSLATIONS).map(([code, language]) => ({ value: code, label: language.meta?.name || code })),
 				] } };
 			} else {
 				selector.selector = { entity: { filter: { domain: selector.dataset.filter } } };
@@ -1675,16 +1738,70 @@ class FreeboxCardEditor extends HTMLElement {
 	}
 
 	_initializeSectionOrder() {
-		this.querySelectorAll("[data-section-move]").forEach((button) => {
-			button.addEventListener("click", () => {
-				const key = button.closest("[data-section-key]")?.dataset.sectionKey;
+		const list = this.querySelector(".section-order-list");
+		if (!list) return;
+
+		const toggleSection = (row) => {
+			const key = row.dataset.sectionExpand;
+			if (!key) return;
+			const options = row.closest(".section-order-item")?.querySelector(".section-options");
+			const open = !this._layoutSectionsOpen.has(key);
+			if (open) this._layoutSectionsOpen.add(key); else this._layoutSectionsOpen.delete(key);
+			row.setAttribute("aria-expanded", String(open));
+			options?.classList.toggle("open", open);
+		};
+
+		this.querySelectorAll("[data-section-expand]").forEach((row) => {
+			row.addEventListener("click", (event) => {
+				if (event.target.closest("ha-switch, .drag-handle, input, ha-entity-picker")) return;
+				toggleSection(row);
+			});
+			row.addEventListener("keydown", (event) => {
+				if ((event.key === "Enter" || event.key === " ") && !event.target.closest("ha-switch, .drag-handle")) {
+					event.preventDefault();
+					toggleSection(row);
+				}
+			});
+		});
+
+		const items = [...list.querySelectorAll(".section-order-item")];
+		items.forEach((item) => {
+			const handle = item.querySelector(".drag-handle");
+			handle?.addEventListener("dragstart", (event) => {
+				this._draggedSectionKey = item.dataset.sectionKey;
+				item.classList.add("dragging");
+				event.dataTransfer.effectAllowed = "move";
+				event.dataTransfer.setData("text/plain", this._draggedSectionKey);
+			});
+			handle?.addEventListener("dragend", () => {
+				this._draggedSectionKey = "";
+				items.forEach((candidate) => candidate.classList.remove("dragging", "drag-over"));
+			});
+			item.addEventListener("dragover", (event) => {
+				if (!this._draggedSectionKey) return;
+				event.preventDefault();
+				if (item.dataset.sectionKey !== this._draggedSectionKey) item.classList.add("drag-over");
+				event.dataTransfer.dropEffect = "move";
+			});
+			item.addEventListener("dragleave", () => item.classList.remove("drag-over"));
+			item.addEventListener("drop", (event) => {
+				if (!this._draggedSectionKey) return;
+				event.preventDefault();
+				const sourceKey = this._draggedSectionKey;
+				const targetKey = item.dataset.sectionKey;
+				if (!sourceKey || sourceKey === targetKey) return;
 				const defaults = this._getSectionDefinitions().map((section) => section.key);
 				const configured = Array.isArray(this._config?.section_order) ? this._config.section_order : [];
-				const order = [...new Set([...configured, ...defaults])].filter((item) => defaults.includes(item));
-				const index = order.indexOf(key);
-				const target = button.dataset.sectionMove === "up" ? index - 1 : index + 1;
-				if (index < 0 || target < 0 || target >= order.length) return;
-				[order[index], order[target]] = [order[target], order[index]];
+				const order = [...new Set([...configured, ...defaults])].filter((key) => defaults.includes(key));
+				const sourceIndex = order.indexOf(sourceKey);
+				if (sourceIndex < 0 || !order.includes(targetKey)) return;
+				order.splice(sourceIndex, 1);
+				const targetIndex = order.indexOf(targetKey);
+				const rect = item.getBoundingClientRect();
+				const after = event.clientY > rect.top + rect.height / 2;
+				order.splice(targetIndex + (after ? 1 : 0), 0, sourceKey);
+
+				// Preserve General / Card layout open state across the editor re-render.
 				const openSections = this._getEditorOpenSections();
 				this._config = { ...this._config, section_order: order };
 				this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: { ...this._config } }, bubbles: true, composed: true }));
