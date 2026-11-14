@@ -14,7 +14,7 @@ Une carte Lovelace responsive pour [Home Assistant](https://www.home-assistant.i
 
 | Thème clair | Thème sombre |
 |---|---|
-| <img width="460" height="122" alt="image" src="https://github.com/user-attachments/assets/c69073d3-5552-417c-98a9-c6f09f63f4bb" /> | <img width="464" height="123" alt="image" src="https://github.com/user-attachments/assets/7eed5d18-d31e-44a8-a1b9-a27d61e1c884" /> |
+| <img width="502" height="345" alt="image" src="https://github.com/user-attachments/assets/6f3deaa2-6977-44e8-81d3-92db7fafbac8" /> | <img width="503" height="346" alt="image" src="https://github.com/user-attachments/assets/b27fff26-674e-49b2-aada-6fdf020acd8e" /> |
 
 ### Système
 
