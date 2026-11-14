@@ -43,7 +43,9 @@ Une carte Lovelace responsive pour [Home Assistant](https://www.home-assistant.i
 ## ✨ Fonctionnalités
 
 - Détection automatique de la Freebox depuis les registres d’appareils et d’entités de Home Assistant
+- Détection automatique du capteur de latence moyenne depuis l’intégration Ping
 - Suivi du débit descendant, du débit montant et, en option, de la latence
+- Graphique d’historique des débits descendant et montant avec période configurable
 - Informations système : état WAN, modèle, version matérielle, firmware, numéro de série, type de connexion, adresses MAC et IP, disponibilité
 - Suivi matériel du stockage, du RAID, des ventilateurs et des températures lorsque ces entités sont exposées
 - Actions pour activer ou désactiver le Wi-Fi et redémarrer la Freebox, avec confirmation
@@ -102,9 +104,11 @@ La carte essaie de sélectionner automatiquement la Freebox en recherchant une e
 | `device_id` | chaîne | non | détection automatique | Identifiant Home Assistant de l’appareil Freebox |
 | `name` | chaîne | non | `Freebox` | Titre de la carte |
 | `language` | chaîne | non | `auto` | `auto`, `en` ou `fr` |
-| `latency_entity` | chaîne | non | — | Capteur de latence facultatif |
+| `latency_entity` | chaîne | non | détection automatique | Capteur de latence. Si absent, la carte recherche le premier capteur Ping contenant `average` ou `moyen` |
 | `download_bandwidth` | nombre | non | — | Débit descendant maximal en Mbit/s, utilisé pour calculer le pourcentage de la jauge |
 | `upload_bandwidth` | nombre | non | — | Débit montant maximal en Mbit/s, utilisé pour calculer le pourcentage de la jauge |
+| `show_bandwidth_history` | booléen | non | `true` | Afficher le graphique d’historique de la bande passante |
+| `history_hours` | nombre | non | `8` | Nombre d’heures affichées dans l’historique de la bande passante, de 1 à 168 |
 | `section_order` | liste | non | voir ci-dessous | Ordre d’affichage des sections |
 | `show_internet` | booléen | non | `true` | Afficher les informations de bande passante |
 | `show_system` | booléen | non | `true` | Afficher les informations système et les actions |
