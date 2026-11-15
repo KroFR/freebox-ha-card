@@ -101,6 +101,9 @@ const TRANSLATIONS = {
 			debug: "Debug",
 			drag_section: "Drag to reorder",
 			section_options: "Section options",
+			show_storage_raid: "Show Storage & RAID",
+			show_fans: "Show fans",
+			show_temperatures: "Show temperatures",
 			auto: "Auto",
 		},
 	},
@@ -193,6 +196,9 @@ const TRANSLATIONS = {
 			debug: "Debug",
 			drag_section: "Faire glisser pour réorganiser",
 			section_options: "Options de la section",
+			show_storage_raid: "Afficher le stockage et le RAID",
+			show_fans: "Afficher les ventilateurs",
+			show_temperatures: "Afficher les températures",
 			auto: "Auto",
 		},
 	},
@@ -253,6 +259,9 @@ class FreeboxCard extends HTMLElement {
 		show_internet: true,
 		show_system: true,
 		show_hardware: true,
+		show_storage_raid: true,
+		show_fans: true,
+		show_temperatures: true,
 		show_telephony: true,
 		show_devices: true,
 		show_debug: false,
@@ -288,7 +297,7 @@ class FreeboxCard extends HTMLElement {
 		const source = config && typeof config === "object" ? config : {};
 		const safeConfig = {};
 		const stringFields = ["name", "device_id", "latency_entity", "download_bandwidth", "upload_bandwidth", "history_hours"];
-		const booleanFields = ["show_internet", "show_system", "show_hardware", "show_telephony", "show_devices", "show_debug", "show_header", "show_card_background", "show_bandwidth_history", "show_live_metrics", "show_history_maximums"];
+		const booleanFields = ["show_internet", "show_system", "show_hardware", "show_storage_raid", "show_fans", "show_temperatures", "show_telephony", "show_devices", "show_debug", "show_header", "show_card_background", "show_bandwidth_history", "show_live_metrics", "show_history_maximums"];
 		for (const key of stringFields)
 			if (typeof source[key] === "string") safeConfig[key] = source[key].slice(0, 512);
 		for (const key of booleanFields)
@@ -1179,9 +1188,9 @@ class FreeboxCard extends HTMLElement {
 
 		return `<section class="panel detail-panel hardware-panel">
 			<div class="section-title"><ha-icon icon="mdi:memory"></ha-icon>${this._t("hardware")}</div>
-			${storage.length || raid.length ? this._hardwareGroup(this._t("disks"), "mdi:harddisk", [...storage.map((id) => this._hardwareTile(id, "storage")), ...raid.map((id) => this._hardwareTile(id, "raid"))].join("")) : ""}
-			${fans.length ? this._hardwareGroup(this._t("fans"), "mdi:fan", fans.map((id) => this._hardwareTile(id, "fan")).join("")) : ""}
-			${temperatures.length ? this._hardwareGroup(this._t("temperatures"), "mdi:thermometer", temperatures.map((id) => this._hardwareTile(id, "temperature")).join(""), "temperature-grid") : ""}
+			${this._config.show_storage_raid !== false && (storage.length || raid.length) ? this._hardwareGroup(this._t("disks"), "mdi:harddisk", [...storage.map((id) => this._hardwareTile(id, "storage")), ...raid.map((id) => this._hardwareTile(id, "raid"))].join("")) : ""}
+			${this._config.show_fans !== false && fans.length ? this._hardwareGroup(this._t("fans"), "mdi:fan", fans.map((id) => this._hardwareTile(id, "fan")).join("")) : ""}
+			${this._config.show_temperatures !== false && temperatures.length ? this._hardwareGroup(this._t("temperatures"), "mdi:thermometer", temperatures.map((id) => this._hardwareTile(id, "temperature")).join(""), "temperature-grid") : ""}
 		</section>`;
 	}
 
@@ -1620,6 +1629,9 @@ class FreeboxCardEditor extends HTMLElement {
 		"show_internet",
 		"show_system",
 		"show_hardware",
+		"show_storage_raid",
+		"show_fans",
+		"show_temperatures",
 		"show_debug",
 		"show_header",
 		"show_card_background",
@@ -1718,8 +1730,8 @@ class FreeboxCardEditor extends HTMLElement {
 		const order = [...new Set([...configured, ...definitions.map((section) => section.key)])].filter((key) => byKey.has(key));
 		return order.map((key) => {
 			const section = byKey.get(key);
-			const hasOptions = key === "internet";
-			const options = hasOptions
+			const hasOptions = key === "internet" || key === "hardware";
+			const options = key === "internet"
 				? `<div class="section-suboptions">
 					<div class="option-group">
 						<div class="option-group-title"><ha-icon icon="mdi:gauge"></ha-icon><span>${this._et("live_metrics")}</span></div>
@@ -1737,7 +1749,9 @@ class FreeboxCardEditor extends HTMLElement {
 						</div>
 					</div>
 				</div>`
-				: "";
+				: key === "hardware"
+					? `<div class="section-suboptions"><div class="option-group"><div class="option-group-title"><ha-icon icon="mdi:memory"></ha-icon><span>${this._et("section_options")}</span></div><div class="option-group-content">${this._switchRow("show_storage_raid", this._et("show_storage_raid"))}${this._switchRow("show_fans", this._et("show_fans"))}${this._switchRow("show_temperatures", this._et("show_temperatures"))}</div></div></div>`
+					: "";
 			return `<div class="section-order-item" data-section-key="${key}"><div class="section-order-row${hasOptions ? " expandable" : ""}" ${hasOptions ? `data-section-expand="${key}" role="button" tabindex="0" aria-expanded="${this._layoutSectionsOpen.has(key)}"` : ""}><span class="drag-handle" draggable="true" title="${this._et("drag_section")}" aria-label="${this._et("drag_section")}" tabindex="0"><ha-icon icon="mdi:drag"></ha-icon></span><ha-icon class="section-icon" icon="${section.icon}"></ha-icon><span class="section-label">${section.label}</span><ha-switch data-config="${section.visibility}"></ha-switch>${hasOptions ? `<span class="section-expand" aria-hidden="true"><ha-icon icon="mdi:chevron-down"></ha-icon></span>` : `<span class="section-expand-spacer"></span>`}</div>${hasOptions ? `<div class="section-options${this._layoutSectionsOpen.has(key) ? " open" : ""}">${options}</div>` : ""}</div>`;
 		}).join("");
 	}
