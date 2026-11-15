@@ -1442,7 +1442,7 @@ class FreeboxCard extends HTMLElement {
 			ha-card.light-theme .debug-group { background: var(--ha-card-background, var(--card-background-color)); }
 			ha-card.no-card-background { padding:0; background:transparent; border:0; box-shadow:none; }
 			header { display:flex; align-items:center; gap:10px; margin-bottom:20px; }
-			.brand-icon { display:flex; align-items:center; justify-content:center; width:44px; height:44px; flex:0 0 44px; border:1px solid var(--divider-color); border-radius:14px; color:var(--freebox-accent); background:var(--secondary-background-color); }
+			.brand-icon { display:flex; align-items:center; justify-content:center; width:44px; height:44px; flex:0 0 44px; border:1px solid var(--divider-color); border-radius:14px; color:var(--freebox-accent); background:rgba(128,128,128,.08); }
 			.brand-icon ha-icon { --mdc-icon-size:24px; }
 			h2 { flex:1; min-width:0; margin:0; overflow:hidden; text-overflow:ellipsis; font-size:1.2em; font-weight:600; line-height:1.2; white-space:nowrap; }
 			.system-title { justify-content:space-between; }
