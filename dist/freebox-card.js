@@ -1181,13 +1181,13 @@ class FreeboxCard extends HTMLElement {
 			<div class="section-title"><ha-icon icon="mdi:memory"></ha-icon>${this._t("hardware")}</div>
 			${storage.length || raid.length ? this._hardwareGroup(this._t("disks"), "mdi:harddisk", [...storage.map((id) => this._hardwareTile(id, "storage")), ...raid.map((id) => this._hardwareTile(id, "raid"))].join("")) : ""}
 			${fans.length ? this._hardwareGroup(this._t("fans"), "mdi:fan", fans.map((id) => this._hardwareTile(id, "fan")).join("")) : ""}
-			${temperatures.length ? this._hardwareGroup(this._t("temperatures"), "mdi:thermometer", temperatures.map((id) => this._hardwareTile(id, "temperature")).join("")) : ""}
+			${temperatures.length ? this._hardwareGroup(this._t("temperatures"), "mdi:thermometer", temperatures.map((id) => this._hardwareTile(id, "temperature")).join(""), "temperature-grid") : ""}
 		</section>`;
 	}
 
-	_hardwareGroup(title, icon, tiles) {
-		return `<div class="hardware-group"><div class="hardware-group-title"><ha-icon icon="${icon}"></ha-icon>${title}</div><div class="hardware-grid">${tiles}</div></div>`;
-	}
+		_hardwareGroup(title, icon, tiles, gridClass = "") {
+			return `<div class="hardware-group"><div class="hardware-group-title"><ha-icon icon="${icon}"></ha-icon>${title}</div><div class="hardware-grid ${gridClass}">${tiles}</div></div>`;
+		}
 
 	_hardwareTile(entityId, type) {
 		const state = this._hass.states[entityId];
@@ -1489,12 +1489,14 @@ class FreeboxCard extends HTMLElement {
 			@keyframes uploadFlow { 0%,100% { transform:translateY(1.5px); } 50% { transform:translateY(-1.5px); } }
 			@keyframes latencyPulse { 0%,100% { transform:scale(1); opacity:1; } 50% { transform:scale(1.18); opacity:.72; } }
 			@media (prefers-reduced-motion: reduce) { .internet-metric .metric-icon ha-icon { animation:none; } }
-
 			.upload polyline { opacity:.65; }
 			.hardware-group + .hardware-group { margin-top:14px; padding-top:12px; border-top:1px solid var(--divider-color); }
 			.hardware-group-title { display:flex; align-items:center; gap:6px; margin-bottom:8px; color:var(--secondary-text-color); font-size:10px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; }
 			.hardware-group-title ha-icon { --mdc-icon-size:15px; color:var(--freebox-accent); }
 			.hardware-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(105px,1fr)); gap:8px; }
+			.hardware-grid.temperature-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
+			@media (max-width:520px) { .hardware-grid.temperature-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+			@media (max-width:360px) { .hardware-grid.temperature-grid { grid-template-columns:1fr; } }
 			.hardware-tile { display:grid; grid-template-columns:44px minmax(0,1fr); grid-template-rows:auto auto; align-items:center; column-gap:8px; min-width:0; padding:8px; border:1px solid var(--divider-color); border-radius:12px; color:var(--primary-text-color); background:var(--card-background-color); font:inherit; text-align:left; }
 			.hardware-tile.raid-status { display:grid; grid-template-columns:32px minmax(0,1fr); grid-template-rows:auto; align-items:center; gap:8px; min-height:44px; border-color:var(--divider-color); background:var(--card-background-color); }
 			.raid-marker { display:flex; align-items:center; justify-content:center; width:32px; height:32px; color:var(--raid-color); }
@@ -1597,7 +1599,6 @@ class FreeboxCard extends HTMLElement {
 			.debug-attribute span { min-width:0; overflow-wrap:anywhere; text-align:right; }
 			@media (max-width:520px) { .internet-metrics { grid-template-columns:1fr; } }
 			@media (max-width:420px) { .debug-row, .debug-attribute { grid-template-columns:1fr; gap:3px; } .debug-row strong, .debug-attribute span { text-align:left; } }
-
 			.empty { display:flex; align-items:center; gap:10px; padding:18px; border-radius:14px; color:var(--secondary-text-color); background:var(--secondary-background-color); }
 			.empty ha-icon { color:var(--freebox-accent); }
 			@container (max-width:420px) { .secondary-grid { grid-template-columns:1fr; } }
