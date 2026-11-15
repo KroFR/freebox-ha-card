@@ -104,6 +104,12 @@ const TRANSLATIONS = {
 			show_storage_raid: "Show Storage & RAID",
 			show_fans: "Show fans",
 			show_temperatures: "Show temperatures",
+			show_connected_tile: "Show Connected tile",
+			show_disconnected_tile: "Show Disconnected tile",
+			show_disabled_tile: "Show Disabled tile",
+			show_total_tile: "Show Total tile",
+			show_connected_devices_list: "Show connected devices list",
+			show_disconnected_devices_list: "Show disconnected devices list",
 			auto: "Auto",
 		},
 	},
@@ -199,6 +205,12 @@ const TRANSLATIONS = {
 			show_storage_raid: "Afficher le stockage et le RAID",
 			show_fans: "Afficher les ventilateurs",
 			show_temperatures: "Afficher les températures",
+			show_connected_tile: "Afficher la tuile Connectés",
+			show_disconnected_tile: "Afficher la tuile Déconnectés",
+			show_disabled_tile: "Afficher la tuile Désactivés",
+			show_total_tile: "Afficher la tuile Total",
+			show_connected_devices_list: "Afficher la liste des appareils connectés",
+			show_disconnected_devices_list: "Afficher la liste des appareils déconnectés",
 			auto: "Auto",
 		},
 	},
@@ -264,6 +276,12 @@ class FreeboxCard extends HTMLElement {
 		show_temperatures: true,
 		show_telephony: true,
 		show_devices: true,
+		show_connected_tile: true,
+		show_disconnected_tile: true,
+		show_disabled_tile: true,
+		show_total_tile: true,
+		show_connected_devices_list: true,
+		show_disconnected_devices_list: true,
 		show_debug: false,
 		show_header: true,
 		show_card_background: true,
@@ -297,7 +315,7 @@ class FreeboxCard extends HTMLElement {
 		const source = config && typeof config === "object" ? config : {};
 		const safeConfig = {};
 		const stringFields = ["name", "device_id", "latency_entity", "download_bandwidth", "upload_bandwidth", "history_hours"];
-		const booleanFields = ["show_internet", "show_system", "show_hardware", "show_storage_raid", "show_fans", "show_temperatures", "show_telephony", "show_devices", "show_debug", "show_header", "show_card_background", "show_bandwidth_history", "show_live_metrics", "show_history_maximums"];
+		const booleanFields = ["show_internet", "show_system", "show_hardware", "show_storage_raid", "show_fans", "show_temperatures", "show_telephony", "show_devices", "show_connected_tile", "show_disconnected_tile", "show_disabled_tile", "show_total_tile", "show_connected_devices_list", "show_disconnected_devices_list", "show_debug", "show_header", "show_card_background", "show_bandwidth_history", "show_live_metrics", "show_history_maximums"];
 		for (const key of stringFields)
 			if (typeof source[key] === "string") safeConfig[key] = source[key].slice(0, 512);
 		for (const key of booleanFields)
@@ -1259,21 +1277,25 @@ class FreeboxCard extends HTMLElement {
 
 	_deviceTrackersSection(stats, connectedNames, awayNames = []) {
 		const metrics = [
-			["mdi:home", "home_devices", stats.home, "home"],
-			["mdi:map-marker-radius", "away_devices", stats.away, "away"],
-			["mdi:cancel", "disabled_devices", stats.disabled, "disabled"],
-			["mdi:devices", "total_devices", stats.total, "total"],
-		];
+			this._config.show_connected_tile !== false ? ["mdi:home", "home_devices", stats.home, "home"] : null,
+			this._config.show_disconnected_tile !== false ? ["mdi:map-marker-radius", "away_devices", stats.away, "away"] : null,
+			this._config.show_disabled_tile !== false ? ["mdi:cancel", "disabled_devices", stats.disabled, "disabled"] : null,
+			this._config.show_total_tile !== false ? ["mdi:devices", "total_devices", stats.total, "total"] : null,
+		].filter(Boolean);
 		const renderList = (key, titleKey, names, count, itemClass = "") => names.length
 			? `<details class="connected-devices-list ${itemClass}" data-tracker-list="${key}"${this._trackerListsOpen[key] ? " open" : ""}><summary><span><ha-icon icon="mdi:format-list-bulleted"></ha-icon>${this._t(titleKey)}<em class="connected-count">${count}</em></span></summary><div class="connected-device-names">${names.map((item) => `<div><ha-icon icon="${this._escape(this._safeIcon(item.icon))}"></ha-icon><span>${this._escape(item.name)}</span></div>`).join("")}</div></details>`
 			: "";
-		const connectedList = renderList("connected", "connected_devices_list", connectedNames, `${stats.home} / ${stats.home + stats.away}`);
-		const awayList = renderList("away", "away_devices_list", awayNames, `${awayNames.length} / ${stats.home + stats.away}`, "away-devices-list");
+		const connectedList = this._config.show_connected_devices_list !== false
+			? renderList("connected", "connected_devices_list", connectedNames, `${stats.home} / ${stats.home + stats.away}`)
+			: "";
+		const awayList = this._config.show_disconnected_devices_list !== false
+			? renderList("away", "away_devices_list", awayNames, `${awayNames.length} / ${stats.home + stats.away}`, "away-devices-list")
+			: "";
 		return `<section class="panel detail-panel trackers-panel">
 			<div class="section-title"><ha-icon icon="mdi:devices"></ha-icon>${this._t("device_trackers")}</div>
-			<div class="tracker-metrics">
+			${metrics.length ? `<div class="tracker-metrics">
 				${metrics.map(([icon, key, value, tone]) => `<div class="tracker-metric ${tone}"><ha-icon icon="${icon}"></ha-icon><div><strong>${value}</strong><span>${this._t(key)}</span></div></div>`).join("")}
-			</div>
+			</div>` : ""}
 			${connectedList}
 			${awayList}
 		</section>`;
@@ -1639,6 +1661,12 @@ class FreeboxCardEditor extends HTMLElement {
 		"show_live_metrics",
 		"show_history_maximums",
 		"show_devices",
+		"show_connected_tile",
+		"show_disconnected_tile",
+		"show_disabled_tile",
+		"show_total_tile",
+		"show_connected_devices_list",
+		"show_disconnected_devices_list",
 		"show_telephony",
 	]);
 
@@ -1730,7 +1758,7 @@ class FreeboxCardEditor extends HTMLElement {
 		const order = [...new Set([...configured, ...definitions.map((section) => section.key)])].filter((key) => byKey.has(key));
 		return order.map((key) => {
 			const section = byKey.get(key);
-			const hasOptions = key === "internet" || key === "hardware";
+			const hasOptions = key === "internet" || key === "hardware" || key === "devices";
 			const options = key === "internet"
 				? `<div class="section-suboptions">
 					<div class="option-group">
@@ -1750,8 +1778,10 @@ class FreeboxCardEditor extends HTMLElement {
 					</div>
 				</div>`
 				: key === "hardware"
-					? `<div class="section-suboptions"><div class="option-group"><div class="option-group-title"><ha-icon icon="mdi:memory"></ha-icon><span>${this._et("section_options")}</span></div><div class="option-group-content">${this._switchRow("show_storage_raid", this._et("show_storage_raid"))}${this._switchRow("show_fans", this._et("show_fans"))}${this._switchRow("show_temperatures", this._et("show_temperatures"))}</div></div></div>`
-					: "";
+					? `<div class="section-suboptions"><div class="option-group-content">${this._switchRow("show_storage_raid", this._et("show_storage_raid"))}${this._switchRow("show_fans", this._et("show_fans"))}${this._switchRow("show_temperatures", this._et("show_temperatures"))}</div></div>`
+					: key === "devices"
+						? `<div class="section-suboptions"><div class="option-group-content">${this._switchRow("show_connected_tile", this._et("show_connected_tile"))}${this._switchRow("show_disconnected_tile", this._et("show_disconnected_tile"))}${this._switchRow("show_disabled_tile", this._et("show_disabled_tile"))}${this._switchRow("show_total_tile", this._et("show_total_tile"))}${this._switchRow("show_connected_devices_list", this._et("show_connected_devices_list"))}${this._switchRow("show_disconnected_devices_list", this._et("show_disconnected_devices_list"))}</div></div>`
+						: "";
 			return `<div class="section-order-item" data-section-key="${key}"><div class="section-order-row${hasOptions ? " expandable" : ""}" ${hasOptions ? `data-section-expand="${key}" role="button" tabindex="0" aria-expanded="${this._layoutSectionsOpen.has(key)}"` : ""}><span class="drag-handle" draggable="true" title="${this._et("drag_section")}" aria-label="${this._et("drag_section")}" tabindex="0"><ha-icon icon="mdi:drag"></ha-icon></span><ha-icon class="section-icon" icon="${section.icon}"></ha-icon><span class="section-label">${section.label}</span><ha-switch data-config="${section.visibility}"></ha-switch>${hasOptions ? `<span class="section-expand" aria-hidden="true"><ha-icon icon="mdi:chevron-down"></ha-icon></span>` : `<span class="section-expand-spacer"></span>`}</div>${hasOptions ? `<div class="section-options${this._layoutSectionsOpen.has(key) ? " open" : ""}">${options}</div>` : ""}</div>`;
 		}).join("");
 	}
