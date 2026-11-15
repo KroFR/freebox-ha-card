@@ -91,6 +91,8 @@ const TRANSLATIONS = {
 			card_layout: "Card layout",
 			show_header: "Show card icon and title",
 			show_card_background: "Show card background",
+			show_wifi_button: "Show Wi-Fi button",
+			show_reboot_button: "Show Reboot button",
 			show_bandwidth_history: "Show bandwidth history",
 			history_hours: "History period (hours)",
 			internet: "Bandwidth",
@@ -192,6 +194,8 @@ const TRANSLATIONS = {
 			card_layout: "Disposition de la carte",
 			show_header: "Afficher l’icône et le titre de la carte",
 			show_card_background: "Afficher le fond de la carte",
+			show_wifi_button: "Afficher le bouton Wi-Fi",
+			show_reboot_button: "Afficher le bouton Redémarrer",
 			show_bandwidth_history: "Afficher l’historique de la bande passante",
 			history_hours: "Période de l’historique (heures)",
 			internet: "Bande passante",
@@ -285,6 +289,8 @@ class FreeboxCard extends HTMLElement {
 		show_debug: false,
 		show_header: true,
 		show_card_background: true,
+		show_wifi_button: true,
+		show_reboot_button: true,
 		show_bandwidth_history: true,
 		show_live_metrics: true,
 		show_history_maximums: true,
@@ -315,7 +321,7 @@ class FreeboxCard extends HTMLElement {
 		const source = config && typeof config === "object" ? config : {};
 		const safeConfig = {};
 		const stringFields = ["name", "device_id", "latency_entity", "download_bandwidth", "upload_bandwidth", "history_hours"];
-		const booleanFields = ["show_internet", "show_system", "show_hardware", "show_storage_raid", "show_fans", "show_temperatures", "show_telephony", "show_devices", "show_connected_tile", "show_disconnected_tile", "show_disabled_tile", "show_total_tile", "show_connected_devices_list", "show_disconnected_devices_list", "show_debug", "show_header", "show_card_background", "show_bandwidth_history", "show_live_metrics", "show_history_maximums"];
+		const booleanFields = ["show_internet", "show_system", "show_hardware", "show_storage_raid", "show_fans", "show_temperatures", "show_telephony", "show_devices", "show_connected_tile", "show_disconnected_tile", "show_disabled_tile", "show_total_tile", "show_connected_devices_list", "show_disconnected_devices_list", "show_debug", "show_header", "show_card_background", "show_wifi_button", "show_reboot_button", "show_bandwidth_history", "show_live_metrics", "show_history_maximums"];
 		for (const key of stringFields)
 			if (typeof source[key] === "string") safeConfig[key] = source[key].slice(0, 512);
 		for (const key of booleanFields)
@@ -1179,8 +1185,8 @@ class FreeboxCard extends HTMLElement {
 			return "";
 
 		const systemActions = `<span class="system-actions">
-			${e.wifi ? `<button type="button" class="system-action wifi ${this._hass.states[e.wifi]?.state === "on" ? "active" : ""}" data-action="wifi" data-entity="${this._escape(e.wifi)}" title="${this._t("wifi")}" aria-label="${this._t("wifi")}"><ha-icon icon="${this._hass.states[e.wifi]?.state === "on" ? "mdi:wifi" : "mdi:wifi-off"}"></ha-icon></button>` : ""}
-			${e.reboot ? `<button type="button" class="system-action reboot-action" data-action="reboot" data-entity="${this._escape(e.reboot)}" title="${this._t("reboot")}" aria-label="${this._t("reboot")}"><ha-icon icon="mdi:restart"></ha-icon></button>` : ""}
+			${this._config.show_wifi_button !== false && e.wifi ? `<button type="button" class="system-action wifi ${this._hass.states[e.wifi]?.state === "on" ? "active" : ""}" data-action="wifi" data-entity="${this._escape(e.wifi)}" title="${this._t("wifi")}" aria-label="${this._t("wifi")}"><ha-icon icon="${this._hass.states[e.wifi]?.state === "on" ? "mdi:wifi" : "mdi:wifi-off"}"></ha-icon></button>` : ""}
+			${this._config.show_reboot_button !== false && e.reboot ? `<button type="button" class="system-action reboot-action" data-action="reboot" data-entity="${this._escape(e.reboot)}" title="${this._t("reboot")}" aria-label="${this._t("reboot")}"><ha-icon icon="mdi:restart"></ha-icon></button>` : ""}
 		</span>`;
 		return `<section class="panel detail-panel system-info-panel">
 			<div class="section-title system-title"><span><ha-icon icon="mdi:server"></ha-icon>${this._t("system")}</span>${systemActions}</div>
@@ -1657,6 +1663,8 @@ class FreeboxCardEditor extends HTMLElement {
 		"show_debug",
 		"show_header",
 		"show_card_background",
+		"show_wifi_button",
+		"show_reboot_button",
 		"show_bandwidth_history",
 		"show_live_metrics",
 		"show_history_maximums",
@@ -1758,7 +1766,7 @@ class FreeboxCardEditor extends HTMLElement {
 		const order = [...new Set([...configured, ...definitions.map((section) => section.key)])].filter((key) => byKey.has(key));
 		return order.map((key) => {
 			const section = byKey.get(key);
-			const hasOptions = key === "internet" || key === "hardware" || key === "devices";
+			const hasOptions = key === "internet" || key === "system" || key === "hardware" || key === "devices";
 			const options = key === "internet"
 				? `<div class="section-suboptions">
 					<div class="option-group">
@@ -1777,6 +1785,8 @@ class FreeboxCardEditor extends HTMLElement {
 						</div>
 					</div>
 				</div>`
+				: key === "system"
+					? `<div class="section-suboptions">${this._switchRow("show_wifi_button", this._et("show_wifi_button"))}${this._switchRow("show_reboot_button", this._et("show_reboot_button"))}</div>`
 				: key === "hardware"
 					? `<div class="section-suboptions"><div class="option-group-content">${this._switchRow("show_storage_raid", this._et("show_storage_raid"))}${this._switchRow("show_fans", this._et("show_fans"))}${this._switchRow("show_temperatures", this._et("show_temperatures"))}</div></div>`
 					: key === "devices"
