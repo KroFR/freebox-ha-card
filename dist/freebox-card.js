@@ -739,7 +739,7 @@ class FreeboxCard extends HTMLElement {
 
 		this.shadowRoot.innerHTML = `
 			<style>${this._styles()}</style>
-			<ha-card class="${this._config.show_card_background ? "" : "no-card-background"}" style="--freebox-accent:var(--primary-color)">
+			<ha-card class="${[this._config.show_card_background ? "" : "no-card-background", this._hass?.themes?.darkMode ? "dark-theme" : "light-theme"].filter(Boolean).join(" ")}" style="--freebox-accent:var(--primary-color)">
 				${this._config.show_header ? `<header><div class="brand-icon"><ha-icon icon="mdi:router-wireless"></ha-icon></div><h2>${this._escape(this._config.name || this._t("name"))}</h2></header>` : ""}
 				${!selectedDeviceId && !entities.length ? `<div class="empty"><ha-icon icon="mdi:router-wireless-settings"></ha-icon>${this._t("no_device")}</div>` : ""}
 				${selectedDeviceId && !entities.length ? `<div class="empty"><ha-icon icon="mdi:alert-circle-outline"></ha-icon>${this._t("no_entities")}</div>` : ""}
@@ -1393,6 +1393,16 @@ class FreeboxCard extends HTMLElement {
 		return `
 			:host { display:block; }
 			ha-card { position:relative; overflow:hidden; padding:20px; color:var(--primary-text-color); background:var(--ha-card-background, var(--card-background-color)); }
+			ha-card.light-theme { background:var(--ha-card-background, var(--card-background-color)); }
+			ha-card.light-theme .panel { background:var(--ha-card-background, var(--card-background-color)); }
+			ha-card.light-theme .internet-metric,
+			ha-card.light-theme .hardware-tile,
+			ha-card.light-theme .hardware-tile.raid-status,
+			ha-card.light-theme .call-metric,
+			ha-card.light-theme .reset-calls,
+			ha-card.light-theme .tracker-metric,
+			ha-card.light-theme .connected-devices-list,
+			ha-card.light-theme .debug-group { background: var(--ha-card-background, var(--card-background-color)); }
 			ha-card.no-card-background { padding:0; background:transparent; border:0; box-shadow:none; }
 			header { display:flex; align-items:center; gap:10px; margin-bottom:20px; }
 			.brand-icon { display:flex; align-items:center; justify-content:center; width:44px; height:44px; flex:0 0 44px; border:1px solid var(--divider-color); border-radius:14px; color:var(--freebox-accent); background:var(--secondary-background-color); }
