@@ -219,6 +219,7 @@ const TRANSLATIONS = {
 		},
 	},
 };
+
 function resolveLanguage(hass, configuredLanguage = "auto") {
 	if (configuredLanguage !== "auto" && TRANSLATIONS[configuredLanguage]) return configuredLanguage;
 	const language = (hass?.locale?.language || hass?.language || "en").toLowerCase().split("-")[0];
@@ -315,6 +316,7 @@ class FreeboxCard extends HTMLElement {
 		this._registryLoaded = false;
 		this._registryLoading = false;
 		this._bandwidthHistory = { key: "", loadedAt: 0, loading: false, series: {} };
+		this._lastRenderSignature = "";
 	}
 
 	setConfig(config) {
@@ -331,13 +333,36 @@ class FreeboxCard extends HTMLElement {
 		if (Array.isArray(source.section_order))
 			safeConfig.section_order = [...new Set(source.section_order.filter((key) => allowedSections.has(key)))];
 		this._config = { ...FreeboxCard.FIELD_DEFAULTS, ...safeConfig };
+		this._lastRenderSignature = "";
 		this._render();
 	}
 
 	set hass(hass) {
 		this._hass = hass;
 		this._loadRegistries();
+		const signature = this._getRenderSignature(hass);
+		if (signature === this._lastRenderSignature) return;
+		this._lastRenderSignature = signature;
 		this._render();
+	}
+
+	_getRenderSignature(hass = this._hass) {
+		if (!hass || !this._config) return "";
+		const entityIds = new Set();
+		for (const id of this._getDeviceEntities()) entityIds.add(id);
+		for (const entity of this._getIntegrationEntities()) if (entity?.entity_id) entityIds.add(entity.entity_id);
+		if (this._config.latency_entity) entityIds.add(this._config.latency_entity);
+		const states = [...entityIds].sort().map((entityId) => {
+			const state = hass.states?.[entityId];
+			if (!state) return [entityId, null];
+			return [entityId, state.state, state.last_changed, state.last_updated];
+		});
+		return JSON.stringify({
+			deviceId: this._getSelectedDeviceId(),
+			language: resolveLanguage(hass, this._config.language || "auto"),
+			darkMode: Boolean(hass.themes?.darkMode),
+			states,
+		});
 	}
 
 	getCardSize() {
@@ -393,6 +418,7 @@ class FreeboxCard extends HTMLElement {
 			console.warn("[freebox-card] Unable to load Home Assistant registries", error);
 		} finally {
 			this._registryLoading = false;
+			this._lastRenderSignature = this._getRenderSignature();
 			this._render();
 		}
 	}
@@ -414,7 +440,6 @@ class FreeboxCard extends HTMLElement {
 					configEntryIds.add(configEntryId);
 			}
 		}
-
 		return configEntryIds;
 	}
 
@@ -465,7 +490,6 @@ class FreeboxCard extends HTMLElement {
 	}
 
 	_find(domain, terms) {
-
 		const entities = this._getDeviceEntities();
 		return entities.find((entityId) => {
 			const state = this._hass.states[entityId];
@@ -489,7 +513,6 @@ class FreeboxCard extends HTMLElement {
 
 	_getFreeboxModel() {
 		const { model = "", hw_version = "" } = this._getSelectedDeviceInfo();
-
 		const text = `${model} ${hw_version}`.toLowerCase();
 
 		if (/\bv9\b/i.test(text)) return "Freebox Ultra";
@@ -548,11 +571,14 @@ class FreeboxCard extends HTMLElement {
 	}
 
 	_findWanStatus() {
-		const candidates = this._getIntegrationEntityIds()
-			.filter((entityId) => entityId.startsWith("sensor.") || entityId.startsWith("binary_sensor."))
+		const integrationEntities = this._getIntegrationEntities();
+		const registryById = new Map(integrationEntities.map((entity) => [entity.entity_id, entity]));
+		const candidates = integrationEntities
+			.map((entity) => entity.entity_id)
+			.filter((entityId) => this._hass.states[entityId] && (entityId.startsWith("sensor.") || entityId.startsWith("binary_sensor.")))
 			.map((entityId) => {
 				const state = this._hass.states[entityId];
-				const registry = this._getIntegrationEntities().find((entity) => entity.entity_id === entityId) || {};
+				const registry = registryById.get(entityId) || {};
 				const text = [
 					entityId,
 					state?.attributes?.friendly_name,
@@ -656,7 +682,7 @@ class FreeboxCard extends HTMLElement {
 		}
 		const value = Number(state.state);
 		const formatted = Number.isFinite(value)
-			? new Intl.NumberFormat(this._getLanguage(), { maximumFractionDigits: 1 }).format(value)
+			? new Intl.NumberFormat(this._getLanguage(), { maximumFractionDigits: 0 }).format(value)
 			: state.state;
 		return `${formatted}${state.attributes.unit_of_measurement ? ` ${state.attributes.unit_of_measurement}` : ""}`;
 	}
@@ -664,9 +690,11 @@ class FreeboxCard extends HTMLElement {
 	_isValidEntityId(entityId) {
 		return typeof entityId === "string" && /^[a-z0-9_]+\.[a-z0-9_]+$/.test(entityId);
 	}
+
 	_safeIcon(icon, fallback = "mdi:devices") {
 		return typeof icon === "string" && /^mdi:[a-z0-9-]+$/.test(icon) ? icon : fallback;
 	}
+
 	_handleClick(event) {
 		const entityId = event.currentTarget?.dataset?.entity;
 		const action = event.currentTarget?.dataset?.action;
@@ -742,7 +770,7 @@ class FreeboxCard extends HTMLElement {
 		if (!this.shadowRoot || !this._config) {
 			return;
 		}
-		// Preserve tracker list state before Home Assistant triggers a card re-render.
+
 		this.shadowRoot.querySelectorAll("details[data-tracker-list]").forEach((element) => {
 			this._trackerListsOpen[element.dataset.trackerList] = element.open;
 		});
@@ -815,6 +843,44 @@ class FreeboxCard extends HTMLElement {
 			});
 		});
 		this._initializeBandwidthHistoryTooltip();
+		this._initializeBandwidthHistoryAxis();
+	}
+
+	_initializeBandwidthHistoryAxis() {
+		const chart = this.shadowRoot?.querySelector(".history-chart[data-history-start]");
+		const axis = chart?.querySelector(".history-x");
+		const svg = chart?.querySelector("svg");
+		if (!chart || !axis || !svg) return;
+		const start = Number(chart.dataset.historyStart);
+		const end = Number(chart.dataset.historyEnd);
+		const hours = Number(axis.dataset.historyHours) || 8;
+		const formatter = new Intl.DateTimeFormat(this._getLanguage(), { hour: "2-digit", minute: "2-digit", hour12: false });
+		const renderAxis = () => {
+			const width = axis.getBoundingClientRect().width;
+			if (!width || !Number.isFinite(start) || !Number.isFinite(end)) return;
+			// Apex-like density: keep more time labels while preserving readability.
+			// Around 50-55 px per label gives 7-9 ticks on a normal card and 5-6 on mobile.
+			const targetLabels = Math.max(4, Math.min(10, Math.floor(width / 52)));
+			const idealStep = hours / Math.max(1, targetLabels - 1);
+			const allowedSteps = [1, 2, 3, 4, 6, 8, 12, 24, 48];
+			const hourStep = allowedSteps.find((step) => step >= idealStep) || 48;
+			let tick = Math.ceil(start / 3600000) * 3600000;
+			while (new Date(tick).getHours() % Math.min(hourStep, 24) !== 0) tick += 3600000;
+			const ticks = [];
+			for (; tick <= end; tick += hourStep * 3600000) ticks.push(tick);
+			axis.innerHTML = ticks.map((timestamp) => {
+				const ratio = (timestamp - start) / Math.max(end - start, 1);
+				return `<span style="left:${ratio * 100}%"><i aria-hidden="true"></i>${this._escape(formatter.format(new Date(timestamp)))}</span>`;
+			}).join("");
+			// Keep the plot background horizontal-only, like ApexCharts in this card.
+			svg.querySelectorAll(".history-hour-grid").forEach((line) => line.remove());
+		};
+		renderAxis();
+		if (typeof ResizeObserver !== "undefined") {
+			this._historyAxisObserver?.disconnect();
+			this._historyAxisObserver = new ResizeObserver(renderAxis);
+			this._historyAxisObserver.observe(axis);
+		}
 	}
 
 	_initializeBandwidthHistoryTooltip() {
@@ -853,7 +919,7 @@ class FreeboxCard extends HTMLElement {
 			tooltip.hidden = false;
 			const chartRect = chart.getBoundingClientRect();
 			const gap = 14;
-			const plotLeft = 42;
+			const plotLeft = 24;
 			const maxLeft = Math.max(plotLeft, chartRect.width - tooltip.offsetWidth - 4);
 			const roomRight = chartRect.width - x;
 			const tooltipLeft = roomRight >= tooltip.offsetWidth + gap
@@ -952,17 +1018,6 @@ class FreeboxCard extends HTMLElement {
 		return [];
 	}
 
-	_convertBandwidthToMbit(value, entityId) {
-		const unit = String(this._hass?.states?.[entityId]?.attributes?.unit_of_measurement || "Mbit/s").trim();
-		if (/^gbit\/s$/i.test(unit) || /^gbps$/i.test(unit)) return value * 1000;
-		if (/^kbit\/s$/i.test(unit) || /^kbps$/i.test(unit)) return value / 1000;
-		if (/^bit\/s$/i.test(unit) || /^bps$/i.test(unit)) return value / 1000000;
-		if (/^GB\/s$/.test(unit)) return value * 8000;
-		if (/^MB\/s$/.test(unit)) return value * 8;
-		if (/^kB\/s$/.test(unit)) return value * 0.008;
-		if (/^B\/s$/.test(unit)) return value * 0.000008;
-		return value;
-	}
 
 	_normalizeBandwidthHistory(history, entityId) {
 		const rawSeries = this._getHistorySeries(history, entityId);
@@ -1000,9 +1055,6 @@ class FreeboxCard extends HTMLElement {
 		try {
 			const end = new Date();
 			const start = new Date(end.getTime() - hours * 3600000);
-			// Match ApexCharts Card: use Home Assistant's REST history endpoint.
-			// This returns the same state representation consumed by ApexCharts,
-			// instead of the compact WebSocket history payload.
 			const query = new URLSearchParams({
 				filter_entity_id: entityIds.join(","),
 				end_time: end.toISOString(),
@@ -1027,8 +1079,6 @@ class FreeboxCard extends HTMLElement {
 			point.timestamp >= start && point.timestamp <= end && Number.isFinite(point.value));
 		if (!visible.length) return [];
 
-		// Match ApexCharts Card group_by: duration: 5min, func: avg.
-		// Buckets are anchored to the beginning of the visible graph period.
 		const buckets = new Map();
 		for (const point of visible) {
 			const bucketIndex = Math.floor((point.timestamp - start) / duration);
@@ -1048,17 +1098,13 @@ class FreeboxCard extends HTMLElement {
 	_historyScale(points) {
 		const peak = points.reduce((maximum, point) =>
 			Number.isFinite(point.value) ? Math.max(maximum, point.value) : maximum, 0);
-		if (peak <= 0) return { maximum: 10, ticks: 4 };
+		if (peak <= 0) return { maximum: 10, step: 10 };
 
-		// ApexCharts rounds the visible maximum to a readable upper bound.
-		const magnitude = 10 ** Math.floor(Math.log10(peak));
-		const precision = magnitude >= 10 ? magnitude / 10 : magnitude;
-		// Reserve 20% of the plot height above the highest value for the Max label.
-		// This keeps the label above the curve while preventing overlap with the title.
-		const targetMaximum = peak / 0.8;
-		const maximum = Math.max(precision, Math.ceil(targetMaximum / precision) * precision);
-		const ticks = maximum <= 40 ? Math.max(2, Math.min(4, Math.round(maximum / 10))) : 4;
-		return { maximum, ticks };
+		const maximum = Math.max(10, Math.ceil((peak / 0.82) / 10) * 10);
+		const targetTicks = maximum <= 40 ? maximum / 10 : 4;
+		const rawStep = maximum / Math.max(1, targetTicks);
+		const step = Math.max(10, Math.ceil(rawStep / 10) * 10);
+		return { maximum: Math.ceil(maximum / step) * step, step };
 	}
 
 	_historyPath(points, start, end, maximum, width, height) {
@@ -1108,38 +1154,26 @@ class FreeboxCard extends HTMLElement {
 			const x = ((point.timestamp - start) / Math.max(end - start, 1)) * width;
 			const y = height - Math.min(Math.max(point.value / roundedMaximum, 0), 1) * height;
 			const label = valueFormatter.format(maximumValue);
-			const labelWidth = Math.max(32, label.length * 6.3 + 12);
+			const labelWidth = Math.max(40, label.length * 7.2 + 16);
 			const labelX = Math.min(Math.max(x, labelWidth / 2 + 2), width - labelWidth / 2 - 2);
-			// The scale reserves enough headroom to keep this label strictly above the curve.
-			const labelBottom = y - 9;
-			const labelTop = labelBottom - 15;
-			return `<g class="history-max-marker ${cssClass}"><line class="history-max-stem" x1="${x.toFixed(1)}" y1="${labelBottom.toFixed(1)}" x2="${x.toFixed(1)}" y2="${(y - 4).toFixed(1)}"></line><rect class="history-max-label-bg" x="${(labelX - labelWidth / 2).toFixed(1)}" y="${labelTop.toFixed(1)}" width="${labelWidth.toFixed(1)}" height="15" rx="3"></rect><text class="history-max-label" x="${labelX.toFixed(1)}" y="${(labelTop + 11).toFixed(1)}" text-anchor="middle">${this._escape(label)}</text><circle class="history-max-point" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.5"></circle></g>`;
+			const labelBottom = y - 10;
+			const labelHeight = 19;
+			const labelTop = labelBottom - labelHeight;
+			return `<g class="history-max-marker ${cssClass}"><line class="history-max-stem" x1="${x.toFixed(1)}" y1="${labelBottom.toFixed(1)}" x2="${x.toFixed(1)}" y2="${(y - 4).toFixed(1)}"></line><rect class="history-max-label-bg" x="${(labelX - labelWidth / 2).toFixed(1)}" y="${labelTop.toFixed(1)}" width="${labelWidth.toFixed(1)}" height="${labelHeight}" rx="4"></rect><text class="history-max-label" x="${labelX.toFixed(1)}" y="${(labelTop + 14).toFixed(1)}" text-anchor="middle">${this._escape(label)}</text><circle class="history-max-point" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.5"></circle></g>`;
 		};
 		const showMaximums = this._config.show_history_maximums !== false;
 		const downloadMaxMarker = showMaximums ? maxMarker(groupedDownload, downloadMax, "download") : "";
 		const uploadMaxMarker = showMaximums ? maxMarker(groupedUpload, uploadMax, "upload") : "";
 
-		const formatter = new Intl.DateTimeFormat(this._getLanguage(), { hour: "2-digit", minute: "2-digit" });
-		// Adapt X-axis density to the displayed period. Keep roughly 6 to 9 labels.
-		// Examples: 8 h -> 1 h, 24 h -> 4 h, 48 h -> 6 h, 7 d -> 24 h.
-		const hourStep = hours <= 10 ? 1 : hours <= 18 ? 2 : hours <= 30 ? 4 : hours <= 60 ? 6 : hours <= 96 ? 12 : 24;
-		const firstFullHour = Math.ceil(start / 3600000) * 3600000;
-		let firstTick = firstFullHour;
-		while (new Date(firstTick).getHours() % hourStep !== 0) firstTick += 3600000;
-		const hourTicks = [];
-		for (let timestamp = firstTick; timestamp <= end; timestamp += hourStep * 3600000) hourTicks.push(timestamp);
-		const labels = hourTicks.map((timestamp) => {
-			const ratio = (timestamp - start) / Math.max(end - start, 1);
-			return `<span style="left:${ratio * 100}%">${formatter.format(new Date(timestamp))}</span>`;
+		const labels = "";
+		const yTickCount = Math.max(1, Math.round(roundedMaximum / scale.step));
+		const yRatios = Array.from({ length: yTickCount + 1 }, (_, index) => index / yTickCount);
+		const horizontalGrid = yRatios.map((ratio) => `<line class="history-horizontal-grid" x1="0" y1="${(height * ratio).toFixed(1)}" x2="${width}" y2="${(height * ratio).toFixed(1)}"></line>`).join("");
+		const yLabels = [...yRatios].reverse().map((ratio) => {
+			const top = (1 - ratio) * 100;
+			return `<span style="top:${top}%">${this._escape(new Intl.NumberFormat(this._getLanguage(), { maximumFractionDigits: 0 }).format(roundedMaximum * ratio))}</span>`;
 		}).join("");
-		const yRatios = Array.from({ length: scale.ticks + 1 }, (_, index) => index / scale.ticks);
-		const horizontalGrid = yRatios.map((ratio) => `<line x1="0" y1="${height * ratio}" x2="${width}" y2="${height * ratio}"></line>`).join("");
-		const verticalGrid = hourTicks.map((timestamp) => {
-			const x = ((timestamp - start) / Math.max(end - start, 1)) * width;
-			return `<line class="history-hour-grid" x1="${x.toFixed(1)}" y1="0" x2="${x.toFixed(1)}" y2="${height}"></line>`;
-		}).join("");
-		const yLabels = [...yRatios].reverse().map((ratio) => `<span>${this._escape(new Intl.NumberFormat(this._getLanguage(), { maximumFractionDigits: 1 }).format(roundedMaximum * ratio))}</span>`).join("");
-		return `<div class="bandwidth-history${this._config.show_live_metrics === false ? " no-live-metrics" : ""}"><div class="history-title"><span>${this._t("bandwidth_history")}</span><small>${this._t("history_method")} · ${hours} h</small></div><div class="history-chart" data-history-start="${start}" data-history-end="${end}" data-history-maximum="${roundedMaximum}"><div class="history-unit">Mbit/s</div><div class="history-y">${yLabels}</div><svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-label="${this._escape(this._t("bandwidth_history"))}"><defs><linearGradient id="freebox-download-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#2196f3" stop-opacity=".42"></stop><stop offset="100%" stop-color="#2196f3" stop-opacity=".04"></stop></linearGradient><linearGradient id="freebox-upload-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#4caf50" stop-opacity=".36"></stop><stop offset="100%" stop-color="#4caf50" stop-opacity=".03"></stop></linearGradient></defs>${horizontalGrid}${verticalGrid}${downloadArea ? `<path class="history-area history-download-area" d="${downloadArea}"></path>` : ""}${uploadArea ? `<path class="history-area history-upload-area" d="${uploadArea}"></path>` : ""}${downloadPath ? `<path class="history-line history-download" d="${downloadPath}"></path>` : ""}${uploadPath ? `<path class="history-line history-upload" d="${uploadPath}"></path>` : ""}${downloadMaxMarker}${uploadMaxMarker}</svg><div class="history-hover-overlay" aria-label="Bandwidth history values"></div><div class="history-cursor" hidden></div><span class="history-hover-dot history-hover-download" hidden></span><span class="history-hover-dot history-hover-upload" hidden></span><div class="history-tooltip" hidden></div><div class="history-x">${labels}</div></div></div>`;
+		return `<div class="bandwidth-history${this._config.show_live_metrics === false ? " no-live-metrics" : ""}"><div class="history-title"><span>${this._t("bandwidth_history")}</span><small>${this._t("history_method")} · ${hours} h</small></div><div class="history-chart" data-history-start="${start}" data-history-end="${end}" data-history-maximum="${roundedMaximum}"><div class="history-unit">Mbit/s</div><div class="history-y">${yLabels}</div><svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-label="${this._escape(this._t("bandwidth_history"))}"><defs><linearGradient id="freebox-download-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#2196f3" stop-opacity=".55"></stop><stop offset="100%" stop-color="#2196f3" stop-opacity=".10"></stop></linearGradient><linearGradient id="freebox-upload-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#4caf50" stop-opacity=".50"></stop><stop offset="100%" stop-color="#4caf50" stop-opacity=".09"></stop></linearGradient></defs>${horizontalGrid}${downloadArea ? `<path class="history-area history-download-area" d="${downloadArea}"></path>` : ""}${uploadArea ? `<path class="history-area history-upload-area" d="${uploadArea}"></path>` : ""}${downloadPath ? `<path class="history-line history-download" d="${downloadPath}"></path>` : ""}${uploadPath ? `<path class="history-line history-upload" d="${uploadPath}"></path>` : ""}${downloadMaxMarker}${uploadMaxMarker}</svg><div class="history-hover-overlay" aria-label="Bandwidth history values"></div><div class="history-cursor" hidden></div><span class="history-hover-dot history-hover-download" hidden></span><span class="history-hover-dot history-hover-upload" hidden></span><div class="history-tooltip" hidden></div><div class="history-x" data-history-hours="${hours}">${labels}</div></div></div>`;
 	}
 
 	_internetSection(e, info) {
@@ -1255,7 +1289,6 @@ class FreeboxCard extends HTMLElement {
 			? `${new Intl.NumberFormat(this._getLanguage(), { maximumFractionDigits: 1 }).format(Math.max(0, Math.min(100, usedValue ?? 0)))} ${unit}`
 			: this._formatEntity(entityId);
 		const description = isStorage ? this._t("used_space") : label;
-		const fanStyle = isFan ? ` style="--hardware-fan-delay:${fanAnimationDelay}ms"` : "";
 		return `<button type="button" class="hardware-tile ${type}" data-more-info="${this._escape(entityId)}"><div class="hardware-gauge"><svg viewBox="0 0 44 44" aria-hidden="true"><circle cx="22" cy="22" r="${radius}" class="hardware-track"></circle><circle cx="22" cy="22" r="${radius}" class="hardware-value" style="stroke:${color};stroke-dasharray:${circumference};stroke-dashoffset:${offset}"></circle></svg><ha-icon icon="${icon}" style="color:${color};--hardware-fan-delay:${fanAnimationDelay}ms"></ha-icon></div><strong>${this._escape(value)}</strong><span title="${this._escape(description)}">${this._escape(description)}</span></button>`;
 	}
 
@@ -1431,7 +1464,8 @@ class FreeboxCard extends HTMLElement {
 			:host { display:block; }
 			ha-card { position:relative; overflow:hidden; padding:20px; color:var(--primary-text-color); background:var(--ha-card-background, var(--card-background-color)); }
 			ha-card.light-theme { background:var(--ha-card-background, var(--card-background-color)); }
-			ha-card.light-theme .panel { background:var(--ha-card-background, var(--card-background-color)); }
+			/* Light theme uses the same visual hierarchy as dark theme. */
+			ha-card.light-theme .panel { background:rgba(128,128,128,.08); }
 			ha-card.light-theme .internet-metric,
 			ha-card.light-theme .hardware-tile,
 			ha-card.light-theme .hardware-tile.raid-status,
@@ -1439,8 +1473,26 @@ class FreeboxCard extends HTMLElement {
 			ha-card.light-theme .reset-calls,
 			ha-card.light-theme .tracker-metric,
 			ha-card.light-theme .connected-devices-list,
-			ha-card.light-theme .debug-group { background: var(--ha-card-background, var(--card-background-color)); }
+			ha-card.light-theme .debug-group { background:var(--ha-card-background, var(--card-background-color)); }
 			ha-card.no-card-background { padding:0; background:transparent; border:0; box-shadow:none; }
+			ha-card.light-theme.no-card-background .panel { background:var(--ha-card-background,var(--card-background-color)); }
+			ha-card.light-theme.no-card-background .internet-metric,
+			ha-card.light-theme.no-card-background .hardware-tile,
+			ha-card.light-theme.no-card-background .hardware-tile.raid-status,
+			ha-card.light-theme.no-card-background .call-metric,
+			ha-card.light-theme.no-card-background .reset-calls,
+			ha-card.light-theme.no-card-background .tracker-metric,
+			ha-card.light-theme.no-card-background .connected-devices-list,
+			ha-card.light-theme.no-card-background .debug-group { background:rgba(128,128,128,.08); }
+			ha-card.dark-theme.no-card-background .panel { background:var(--ha-card-background,var(--card-background-color)); }
+			ha-card.dark-theme.no-card-background .internet-metric,
+			ha-card.dark-theme.no-card-background .hardware-tile,
+			ha-card.dark-theme.no-card-background .hardware-tile.raid-status,
+			ha-card.dark-theme.no-card-background .call-metric,
+			ha-card.dark-theme.no-card-background .reset-calls,
+			ha-card.dark-theme.no-card-background .tracker-metric,
+			ha-card.dark-theme.no-card-background .connected-devices-list,
+			ha-card.dark-theme.no-card-background .debug-group { background:color-mix(in srgb, var(--secondary-background-color) 72%, transparent); }
 			header { display:flex; align-items:center; gap:10px; margin-bottom:20px; }
 			.brand-icon { display:flex; align-items:center; justify-content:center; width:44px; height:44px; flex:0 0 44px; border:1px solid var(--divider-color); border-radius:14px; color:var(--freebox-accent); background:rgba(128,128,128,.08); }
 			.brand-icon ha-icon { --mdc-icon-size:24px; }
@@ -1461,30 +1513,37 @@ class FreeboxCard extends HTMLElement {
 			.subsection-title { margin-bottom:8px; color:var(--secondary-text-color); font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
 			.internet-metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
 			.internet-metrics.no-latency { grid-template-columns:repeat(2,minmax(0,1fr)); }
-			.bandwidth-history { margin-top:12px; padding-top:12px; border-top:1px solid var(--divider-color); }
-			.bandwidth-history.no-live-metrics { margin-top:0; padding-top:0; border-top:0; }
+			.bandwidth-history { box-sizing:border-box; min-height:213px; margin-top:12px; padding-top:12px; border-top:1px solid var(--divider-color); }
+			.bandwidth-history.no-live-metrics { min-height:189px; margin-top:0; padding-top:0; border-top:0; }
 			.history-title { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; color:var(--secondary-text-color); font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
 			.history-title small { font-size:9px; font-weight:600; }
-			.history-chart { position:relative; display:grid; grid-template-columns:42px minmax(0,1fr); grid-template-rows:135px 24px; min-width:0; margin-top:14px; }
+			.history-chart { position:relative; display:grid; grid-template-columns:24px minmax(0,1fr); grid-template-rows:135px 24px; min-width:0; min-height:159px; margin-top:14px; }
 			.history-chart svg { width:100%; height:135px; overflow:hidden; }
-			.history-hover-overlay { position:absolute; z-index:4; left:42px; right:0; top:0; height:135px; cursor:crosshair; }
+			.history-hover-overlay { position:absolute; z-index:4; left:24px; right:0; top:0; height:135px; cursor:crosshair; }
 			.history-cursor { position:absolute; z-index:3; top:0; height:135px; border-left:1px dashed var(--secondary-text-color); pointer-events:none; opacity:.75; }
 			.history-hover-dot { position:absolute; z-index:5; width:7px; height:7px; border:2px solid var(--card-background-color); border-radius:50%; transform:translate(-50%,-50%); pointer-events:none; }
 			.history-hover-download { background:#2196f3; }
 			.history-hover-upload { background:#4caf50; }
-			.history-tooltip { position:absolute; z-index:6; min-width:145px; padding:7px 9px; border:1px solid var(--divider-color); border-radius:7px; color:var(--primary-text-color); background:var(--ha-card-background,var(--card-background-color)); box-shadow:0 3px 12px rgba(0,0,0,.28); font-size:10px; pointer-events:none; }
+			.history-tooltip { position:absolute; z-index:6; min-width:145px; padding:8px 10px; border:1px solid var(--divider-color); border-radius:7px; color:var(--primary-text-color); background:var(--ha-card-background,var(--card-background-color)); box-shadow:0 3px 12px rgba(0,0,0,.28); font-size:11px; line-height:1.35; pointer-events:none; }
 			.history-tooltip strong, .history-tooltip span { display:block; }
 			.history-tooltip strong { margin-bottom:5px; }
 			.history-tooltip span { margin-top:3px; white-space:nowrap; }
 			.history-tooltip i { display:inline-block; width:7px; height:7px; margin-right:5px; border-radius:50%; }
 			.history-tooltip i.download { background:#2196f3; }
 			.history-tooltip i.upload { background:#4caf50; }
-			.history-chart line { stroke:var(--divider-color); stroke-width:.8; stroke-dasharray:3 5; opacity:.7; vector-effect:non-scaling-stroke; }
-			.history-chart .history-line { fill:none; stroke-width:2; stroke-linejoin:round; stroke-linecap:round; vector-effect:non-scaling-stroke; }
+			.history-horizontal-grid { stroke:var(--divider-color); stroke-width:1; stroke-dasharray:3 5; opacity:.8; vector-effect:non-scaling-stroke; }
+			ha-card.light-theme .history-x,
+			ha-card.light-theme .history-y,
+			ha-card.light-theme .history-unit { color:#202124; }
+			ha-card.light-theme .history-horizontal-grid { stroke:rgba(32,33,36,.30); opacity:1; }
+			ha-card.dark-theme .history-x,
+			ha-card.dark-theme .history-y,
+			ha-card.dark-theme .history-unit { color:#fff; }
+			ha-card.dark-theme .history-horizontal-grid { stroke:rgba(255,255,255,.36); opacity:1; }
+			.history-chart .history-line { fill:none; stroke-width:1.15; stroke-linejoin:round; stroke-linecap:round; vector-effect:non-scaling-stroke; }
 			.history-chart .history-area { stroke:none; }
 			.history-download-area { fill:url(#freebox-download-fill); }
 			.history-upload-area { fill:url(#freebox-upload-fill); }
-			.history-hour-grid { opacity:.3; }
 			.history-download { stroke:#2196f3; }
 			.history-upload { stroke:#4caf50; }
 			.history-max-marker { pointer-events:none; }
@@ -1497,15 +1556,18 @@ class FreeboxCard extends HTMLElement {
 			.history-max-marker .history-max-label-bg { stroke:none; opacity:.96; }
 			.history-max-marker.download .history-max-label-bg { fill:#2196f3; }
 			.history-max-marker.upload .history-max-label-bg { fill:#4caf50; }
-			.history-max-marker .history-max-label { fill:#fff; font-size:10px; font-weight:700; dominant-baseline:auto; }
-			.history-unit { position:absolute; left:0; top:0; z-index:1; display:flex; align-items:center; justify-content:center; width:14px; height:135px; color:var(--primary-text-color); font-size:11px; font-weight:700; line-height:1; letter-spacing:0; writing-mode:vertical-rl; transform:rotate(180deg); white-space:nowrap; }
-			.history-y { display:flex; flex-direction:column; justify-content:space-between; padding:0 0 1px; color:var(--secondary-text-color); font-size:9px; text-align:right; }
-			.history-y span { padding-right:7px; }
-			.history-x { position:relative; grid-column:2; height:22px; overflow:visible; color:var(--secondary-text-color); font-size:9px; }
-			.history-x span { position:absolute; top:5px; transform:translateX(-50%); white-space:nowrap; }
+			.history-max-marker .history-max-label { fill:#fff; font-size:12px; font-weight:400; dominant-baseline:auto; }
+			.history-max-marker.upload .history-max-label { fill:#000; }
+			.history-unit { position:absolute; left:-8px; top:0; z-index:1; display:flex; align-items:center; justify-content:center; width:11px; height:135px; color:var(--primary-text-color); font-size:11px; font-weight:700; line-height:1; letter-spacing:0; writing-mode:vertical-rl; transform:rotate(180deg); white-space:nowrap; }
+			.history-y { position:relative; height:135px; overflow:visible; color:var(--primary-text-color); font-size:10px; font-weight:700; text-align:right; }
+			.history-y span { position:absolute; right:5px; line-height:1; transform:translateY(-50%); white-space:nowrap; }
+			.history-x { position:relative; grid-column:2; height:22px; overflow:visible; color:var(--primary-text-color); font-size:10px; font-weight:700; }
+			.history-x span { position:absolute; top:7px; transform:translateX(-50%); white-space:nowrap; }
+			.history-x span i { position:absolute; left:50%; top:-7px; width:1px; height:4px; background:currentColor; opacity:.85; transform:translateX(-50%); }
 			.history-x span:first-child { transform:none; }
 			.history-x span:last-child { transform:translateX(-100%); }
-			.history-empty { display:grid; place-items:center; min-height:90px; color:var(--secondary-text-color); font-size:11px; }
+			@media (max-width:520px) { .history-x { font-size:9px; } .history-chart { grid-template-columns:23px minmax(0,1fr); } .history-hover-overlay { left:23px; } .history-unit { left:-8px; font-size:10px; } .history-y span { right:5px; } }
+			.history-empty { display:grid; place-items:center; box-sizing:border-box; min-height:173px; margin-top:14px; color:var(--secondary-text-color); font-size:11px; }
 			.internet-metric { position:relative; display:grid; grid-template-columns:40px minmax(0,1fr); grid-template-rows:min-content min-content; column-gap:8px; align-items:center; min-width:0; padding:7px 8px; border:1px solid var(--divider-color); border-radius:12px; color:var(--primary-text-color); background:var(--card-background-color); font:inherit; text-align:left; }
 			.internet-metric svg { grid-row:1 / 3; width:40px; height:40px; transform:rotate(-90deg); }
 			.metric-icon { position:absolute; left:8px; top:50%; display:flex; align-items:center; justify-content:center; width:40px; height:40px; transform:translateY(-50%); pointer-events:none; }
@@ -1799,81 +1861,80 @@ class FreeboxCardEditor extends HTMLElement {
 	_render() {
 		this.innerHTML = `
 		<style>
-		  .editor { display: grid; gap: 12px; padding: 8px 0; }
-		  details.section { overflow: hidden; background: var(--ha-card-background,var(--card-background-color)); border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius,12px); }
-		  summary { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px; color:var(--primary-text-color); font-size:16px; font-weight:600; cursor:pointer; list-style:none; user-select:none; }
-		  summary::-webkit-details-marker { display:none; }
-		  summary::after { content:""; width:8px; height:8px; border-right:2px solid var(--secondary-text-color); border-bottom:2px solid var(--secondary-text-color); transform:rotate(45deg); transition:transform .2s ease; }
-		  details[open] summary::after { transform:rotate(225deg); }
-		  details[open] summary { border-bottom:1px solid var(--divider-color); }
-		  .section-title { display:flex; align-items:center; gap:10px; }
-		  .section-title ha-icon { --mdc-icon-size:20px; color:var(--secondary-text-color); }
-		  .section-content { display:grid; gap:14px; padding:16px; }
-		  .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); column-gap:14px; row-gap:18px; }
-		  .field, label { display:grid; min-width:0; gap:6px; color:var(--secondary-text-color); font-size:12px; }
-		  .entity-override ha-entity-picker { display:block; width:100%; min-width:0; }
-
-		  input { box-sizing:border-box; width:100%; min-height:42px; padding:8px 10px; color:var(--primary-text-color); background:var(--ha-card-background,var(--card-background-color)); border:1px solid var(--divider-color); border-radius:8px; font:inherit; }
-		  ha-selector { display:block; width:100%; }
-		  .switch-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); column-gap:24px; }
-		  .switch-row { display:flex; align-items:center; justify-content:space-between; gap:16px; min-height:42px; }
-		  .switch-label { color:var(--primary-text-color); font-size:14px; }
-		  .section-order-list { display:grid; gap:8px; }
-		  .section-order-item { display:grid; overflow:hidden; border:1px solid var(--divider-color); border-radius:10px; background:var(--ha-card-background,var(--card-background-color)); transition:border-color .16s ease, opacity .16s ease, transform .16s ease; }
-		  .section-order-item.dragging { opacity:.45; }
-		  .section-order-item.drag-over { border-color:var(--primary-color); transform:translateY(1px); }
-		  .section-order-row { display:grid; grid-template-columns:28px 24px minmax(0,1fr) auto 32px; align-items:center; gap:8px; min-height:48px; padding:5px 8px; }
-		  .drag-handle { display:flex; align-items:center; justify-content:center; width:28px; height:34px; color:var(--secondary-text-color); cursor:grab; touch-action:none; }
-		  .drag-handle:active { cursor:grabbing; }
-		  .drag-handle ha-icon, .section-icon { --mdc-icon-size:18px; }
-		  .section-icon { color:var(--secondary-text-color); }
-		  .section-label { min-width:0; overflow:hidden; color:var(--primary-text-color); font-size:14px; text-overflow:ellipsis; white-space:nowrap; }
-		  .section-order-row.expandable { cursor:pointer; }
-		  .section-order-row.expandable:hover { background:color-mix(in srgb, var(--secondary-background-color) 55%, transparent); }
-		  .section-expand { display:flex; align-items:center; justify-content:center; width:32px; height:32px; color:var(--secondary-text-color); pointer-events:none; }
-		  .section-expand ha-icon { --mdc-icon-size:19px; transition:transform .18s ease; }
-		  .section-order-row[aria-expanded="true"] .section-expand ha-icon { transform:rotate(180deg); }
-		  .section-expand-spacer { width:32px; }
-		  .section-options { display:none; border-top:1px solid var(--divider-color); background:var(--secondary-background-color); }
-		  .section-options.open { display:block; }
-		  .section-suboptions { display:grid; gap:10px; padding:12px; }
-		  .option-group { overflow:hidden; border:1px solid var(--divider-color); border-radius:9px; background:var(--ha-card-background,var(--card-background-color)); }
-		  .option-group-title { display:flex; align-items:center; gap:7px; padding:8px 10px; border-bottom:1px solid var(--divider-color); color:var(--secondary-text-color); font-size:11px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; }
-		  .option-group-title ha-icon { --mdc-icon-size:16px; color:var(--primary-color); }
-		  .option-group-content { display:grid; gap:12px; padding:10px; }
-		  .live-options { gap:10px; }
-		  .bandwidth-latency { padding-top:10px; border-top:1px solid var(--divider-color); }
-		  .history-options { display:grid; grid-template-columns:1fr; gap:0; padding:0; }
-		  .history-primary { display:grid; grid-template-columns:1fr; gap:8px; padding:10px 10px 4px; }
-		  .history-primary .switch-row { align-self:auto; }
-		  .history-primary label { width:100%; }
-		  .history-secondary { padding:4px 10px 6px; }
-		  .bandwidth-latency, .bandwidth-latency .field { min-width:0; width:100%; }
-		  .bandwidth-latency ha-entity-picker { display:block; width:100%; min-width:0; }
-		  .bandwidth-limits { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
-		  .section-suboptions .switch-row { min-height:36px; }
-		  .section-suboptions label { gap:4px; }
-		  .section-suboptions input { min-height:36px; }
-		  .layout-options { display:grid; gap:4px; padding-bottom:10px; border-bottom:1px solid var(--divider-color); }
-		  ha-switch { flex-shrink:0; }
-		  @media (max-width:600px) { .grid, .switch-grid, .bandwidth-limits { grid-template-columns:1fr; } }
+			.editor { display: grid; gap: 12px; padding: 8px 0; }
+			details.section { overflow: hidden; background: var(--ha-card-background,var(--card-background-color)); border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius,12px); }
+			summary { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px; color:var(--primary-text-color); font-size:16px; font-weight:600; cursor:pointer; list-style:none; user-select:none; }
+			summary::-webkit-details-marker { display:none; }
+			summary::after { content:""; width:8px; height:8px; border-right:2px solid var(--secondary-text-color); border-bottom:2px solid var(--secondary-text-color); transform:rotate(45deg); transition:transform .2s ease; }
+			details[open] summary::after { transform:rotate(225deg); }
+			details[open] summary { border-bottom:1px solid var(--divider-color); }
+			.section-title { display:flex; align-items:center; gap:10px; }
+			.section-title ha-icon { --mdc-icon-size:20px; color:var(--secondary-text-color); }
+			.section-content { display:grid; gap:14px; padding:16px; }
+			.grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); column-gap:14px; row-gap:18px; }
+			.field, label { display:grid; min-width:0; gap:6px; color:var(--secondary-text-color); font-size:12px; }
+			.entity-override ha-entity-picker { display:block; width:100%; min-width:0; }
+			input { box-sizing:border-box; width:100%; min-height:42px; padding:8px 10px; color:var(--primary-text-color); background:var(--ha-card-background,var(--card-background-color)); border:1px solid var(--divider-color); border-radius:8px; font:inherit; }
+			ha-selector { display:block; width:100%; }
+			.switch-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); column-gap:24px; }
+			.switch-row { display:flex; align-items:center; justify-content:space-between; gap:16px; min-height:42px; }
+			.switch-label { color:var(--primary-text-color); font-size:14px; }
+			.section-order-list { display:grid; gap:8px; }
+			.section-order-item { display:grid; overflow:hidden; border:1px solid var(--divider-color); border-radius:10px; background:var(--ha-card-background,var(--card-background-color)); transition:border-color .16s ease, opacity .16s ease, transform .16s ease; }
+			.section-order-item.dragging { opacity:.45; }
+			.section-order-item.drag-over { border-color:var(--primary-color); transform:translateY(1px); }
+			.section-order-row { display:grid; grid-template-columns:28px 24px minmax(0,1fr) auto 32px; align-items:center; gap:8px; min-height:48px; padding:5px 8px; }
+			.drag-handle { display:flex; align-items:center; justify-content:center; width:28px; height:34px; color:var(--secondary-text-color); cursor:grab; touch-action:none; }
+			.drag-handle:active { cursor:grabbing; }
+			.drag-handle ha-icon, .section-icon { --mdc-icon-size:18px; }
+			.section-icon { color:var(--secondary-text-color); }
+			.section-label { min-width:0; overflow:hidden; color:var(--primary-text-color); font-size:14px; text-overflow:ellipsis; white-space:nowrap; }
+			.section-order-row.expandable { cursor:pointer; }
+			.section-order-row.expandable:hover { background:color-mix(in srgb, var(--secondary-background-color) 55%, transparent); }
+			.section-expand { display:flex; align-items:center; justify-content:center; width:32px; height:32px; color:var(--secondary-text-color); pointer-events:none; }
+			.section-expand ha-icon { --mdc-icon-size:19px; transition:transform .18s ease; }
+			.section-order-row[aria-expanded="true"] .section-expand ha-icon { transform:rotate(180deg); }
+			.section-expand-spacer { width:32px; }
+			.section-options { display:none; border-top:1px solid var(--divider-color); background:var(--secondary-background-color); }
+			.section-options.open { display:block; }
+			.section-suboptions { display:grid; gap:10px; padding:12px; }
+			.option-group { overflow:hidden; border:1px solid var(--divider-color); border-radius:9px; background:var(--ha-card-background,var(--card-background-color)); }
+			.option-group-title { display:flex; align-items:center; gap:7px; padding:8px 10px; border-bottom:1px solid var(--divider-color); color:var(--secondary-text-color); font-size:11px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; }
+			.option-group-title ha-icon { --mdc-icon-size:16px; color:var(--primary-color); }
+			.option-group-content { display:grid; gap:12px; padding:10px; }
+			.live-options { gap:10px; }
+			.bandwidth-latency { padding-top:10px; border-top:1px solid var(--divider-color); }
+			.history-options { display:grid; grid-template-columns:1fr; gap:0; padding:0; }
+			.history-primary { display:grid; grid-template-columns:1fr; gap:8px; padding:10px 10px 4px; }
+			.history-primary .switch-row { align-self:auto; }
+			.history-primary label { width:100%; }
+			.history-secondary { padding:4px 10px 6px; }
+			.bandwidth-latency, .bandwidth-latency .field { min-width:0; width:100%; }
+			.bandwidth-latency ha-entity-picker { display:block; width:100%; min-width:0; }
+			.bandwidth-limits { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+			.section-suboptions .switch-row { min-height:36px; }
+			.section-suboptions label { gap:4px; }
+			.section-suboptions input { min-height:36px; }
+			.layout-options { display:grid; gap:4px; padding-bottom:10px; border-bottom:1px solid var(--divider-color); }
+			ha-switch { flex-shrink:0; }
+			@media (max-width:600px) { .grid, .switch-grid, .bandwidth-limits { grid-template-columns:1fr; } }
 		</style>
 		<div class="editor">
-		  <details class="section"${this._config?.device_id ? "" : " open"}>
+			<details class="section"${this._config?.device_id ? "" : " open"}>
 			${this._sectionSummary(FreeboxCardEditor.SECTION_ICONS.general, this._et("general"))}
 			<div class="section-content">
-			  <div class="field"><span>${this._et("device_id")}</span><ha-selector data-config="device_id"></ha-selector></div>
-			  <label>${this._et("name")}<input data-config="name" type="text" placeholder="Freebox"></label>
-			  <div class="field"><span>${this._et("language")}</span><ha-selector data-config="language"></ha-selector></div>
+				<div class="field"><span>${this._et("device_id")}</span><ha-selector data-config="device_id"></ha-selector></div>
+				<label>${this._et("name")}<input data-config="name" type="text" placeholder="Freebox"></label>
+				<div class="field"><span>${this._et("language")}</span><ha-selector data-config="language"></ha-selector></div>
 			</div>
-		  </details>
-		  <details class="section">
-			${this._sectionSummary(FreeboxCardEditor.SECTION_ICONS.layout, this._et("card_layout"))}
-			<div class="section-content">
-			  <div class="layout-options">${this._switchRow("show_header", this._et("show_header"))}${this._switchRow("show_card_background", this._et("show_card_background"))}</div>
-			  <div class="section-order-list">${this._renderSectionOrder()}</div>
-			</div>
-		  </details>
+			</details>
+			<details class="section">
+				${this._sectionSummary(FreeboxCardEditor.SECTION_ICONS.layout, this._et("card_layout"))}
+				<div class="section-content">
+					<div class="layout-options">${this._switchRow("show_header", this._et("show_header"))}${this._switchRow("show_card_background", this._et("show_card_background"))}</div>
+					<div class="section-order-list">${this._renderSectionOrder()}</div>
+				</div>
+			</details>
 		</div>`;
 		this._initializeSelectors();
 		this._initializeEntityPickers();
