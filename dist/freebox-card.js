@@ -1346,6 +1346,20 @@ class FreeboxCard extends HTMLElement {
 		return `<div class="detail ${toneClass}"><ha-icon icon="${icon}" class="${iconClass}"></ha-icon><span>${label}</span><strong class="${toneClass}">${this._escape(value)}</strong></div>`;
 	}
 
+	_getDebugDeviceAttributes() {
+		const devices = this._deviceRegistry.length
+			? this._deviceRegistry
+			: Object.values(this._hass?.devices || {});
+		const selectedDeviceId = this._getSelectedDeviceId();
+		const device = devices.find((item) => item.id === selectedDeviceId);
+		if (!device) return [];
+		const deviceName = device.name_by_user || device.name || device.id;
+		return Object.entries(device)
+			.filter(([key, value]) => value !== undefined && value !== null && value !== "" && !["id", "name", "name_by_user"].includes(key))
+			.sort(([a], [b]) => a.localeCompare(b))
+			.map(([key, value]) => ({ deviceName, key, value }));
+	}
+
 	_getDebugExportEntities(group) {
 		const entities = this._getIntegrationEntities();
 		if (group === "trackers")
@@ -1364,6 +1378,19 @@ class FreeboxCard extends HTMLElement {
 		if (!["configuration", "trackers"].includes(group)) return;
 		const entities = this._getDebugExportEntities(group);
 		const lines = [];
+		if (group === "configuration") {
+			const deviceAttributes = this._getDebugDeviceAttributes();
+			let currentDevice = "";
+			for (const attribute of deviceAttributes) {
+				if (attribute.deviceName !== currentDevice) {
+					if (currentDevice) lines.push("");
+					currentDevice = attribute.deviceName;
+					lines.push(`[device_attr: ${currentDevice}]`);
+				}
+				lines.push(`${attribute.key}: ${typeof attribute.value === "object" ? JSON.stringify(attribute.value) : String(attribute.value)}`);
+			}
+			if (deviceAttributes.length) lines.push("");
+		}
 		for (const entity of entities) {
 			const state = this._hass.states[entity.entity_id];
 			const disabled = Boolean(entity.disabled_by);
@@ -1399,6 +1426,7 @@ class FreeboxCard extends HTMLElement {
 				entity.entity_id === mainFreeboxTracker?.entity_id
 			)
 			.sort((a, b) => a.entity_id.localeCompare(b.entity_id));
+		const deviceAttributes = this._getDebugDeviceAttributes();
 		const trackerEntities = entities
 			.filter((entity) => entity.entity_id.startsWith("device_tracker."))
 			.sort((a, b) => {
@@ -1434,22 +1462,31 @@ class FreeboxCard extends HTMLElement {
 				${attributes ? `<div class="debug-attributes">${attributes}</div>` : ""}
 			</div>`;
 		};
-		const renderGroup = (key, title, icon, groupEntities, counters = "", showDefaultCount = true) => {
-			if (!groupEntities.length)
+		const renderGroup = (key, title, icon, groupEntities, counters = "", showDefaultCount = true, prefix = "") => {
+			if (!groupEntities.length && !prefix)
 				return "";
 			const open = Boolean(this._debugGroupsOpen[key]);
-			const defaultCount = showDefaultCount ? `<small>${groupEntities.length}</small>` : "";
+			const extraCount = key === "configuration" && deviceAttributes.length ? 1 : 0;
+			const defaultCount = showDefaultCount ? `<small>${groupEntities.length + extraCount}</small>` : "";
 			return `<details class="debug-group" data-debug-group="${key}" ${open ? "open" : ""}>
 				<summary><span><ha-icon icon="${icon}"></ha-icon>${title}${defaultCount}${counters}</span><span class="debug-summary-actions"><button type="button" class="debug-export" data-debug-export="${key}" title="Save as text file" aria-label="Save ${title} as text file"><ha-icon icon="mdi:content-save-outline"></ha-icon></button><span class="debug-chevron" aria-hidden="true"></span></span></summary>
-				<div class="debug-group-content">${groupEntities.map(renderEntity).join("")}</div>
+				<div class="debug-group-content">${prefix}${groupEntities.map(renderEntity).join("")}</div>
 			</details>`;
 		};
 
+		const deviceAttributeHtml = deviceAttributes.length ? (() => {
+			const groups = new Map();
+			for (const attribute of deviceAttributes) {
+				if (!groups.has(attribute.deviceName)) groups.set(attribute.deviceName, []);
+				groups.get(attribute.deviceName).push(attribute);
+			}
+			return [...groups.entries()].map(([deviceName, attributes]) => `<div class="debug-device-attrs"><div class="debug-device-attrs-title"><code>device_attr</code><span>${this._escape(deviceName)}</span></div><div class="debug-attributes">${attributes.map(({ key, value }) => { const formatted = typeof value === "object" ? JSON.stringify(value) : String(value); return `<div class="debug-attribute"><code>${this._escape(key)}</code><span>${this._escape(formatted)}</span></div>`; }).join("")}</div></div>`).join("");
+		})() : "";
 		const trackerCounters = `<span class="tracker-count total" title="Total devices">${totalDevices}</span><span class="tracker-count enabled" title="Connected or disconnected devices">${enabledDevices}</span><span class="tracker-count disabled" title="Disabled devices">${disabledDevices}</span>`;
 		return `<section class="panel debug-panel">
 			<div class="section-title"><ha-icon icon="mdi:bug-outline"></ha-icon>${this._t("debug")}</div>
 			<div class="debug-list">
-				${renderGroup("configuration", "Configuration", "mdi:cog-outline", configurationEntities)}
+				${renderGroup("configuration", "Configuration", "mdi:cog-outline", configurationEntities, "", true, deviceAttributeHtml)}
 				${renderGroup("trackers", "Device trackers", "mdi:devices", trackerEntities, trackerCounters, false)}
 			</div>
 		</section>`;
@@ -1687,6 +1724,11 @@ class FreeboxCard extends HTMLElement {
 			.debug-group[open] .debug-chevron { transform:rotate(225deg); }
 			.debug-group[open] summary { border-bottom:1px solid var(--divider-color); }
 			.debug-group-content { padding:0 12px; }
+			.debug-device-attrs { padding:10px 0; border-top:1px solid var(--divider-color); }
+			.debug-device-attrs:first-child { border-top:0; }
+			.debug-device-attrs-title { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:7px; }
+			.debug-device-attrs-title code { color:var(--freebox-accent); font-family:monospace; font-size:12px; font-weight:700; }
+			.debug-device-attrs-title span { min-width:0; overflow:hidden; color:var(--secondary-text-color); font-size:11px; text-overflow:ellipsis; white-space:nowrap; }
 			.debug-entity { padding:10px 0; border-top:1px solid var(--divider-color); }
 			.debug-entity:first-child { border-top:0; }
 			.debug-row { display:grid; grid-template-columns:minmax(0, 2fr) minmax(110px, 1fr); align-items:start; gap:16px; }
