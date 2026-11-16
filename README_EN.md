@@ -14,13 +14,13 @@ A responsive Lovelace card for [Home Assistant](https://www.home-assistant.io/) 
 
 | Light Theme | Dark Theme |
 |---|---|
-| <img width="500" height="343" alt="image" src="https://github.com/user-attachments/assets/1c1e5ef8-e156-4f1b-806c-fce00c163c5e" /> | <img width="506" height="347" alt="image" src="https://github.com/user-attachments/assets/01d43fbe-5693-41c1-b06c-462c3b8a2bd7" /> |
+| <img width="501" height="371" alt="image" src="https://github.com/user-attachments/assets/0f3fe2d6-0260-4e42-985e-37a1d674be90" /> | <img width="504" height="371" alt="image" src="https://github.com/user-attachments/assets/79c008c1-7b57-4d0c-be75-4667f05d9e73" /> |
 
 ### System
 
 | Light Theme | Dark Theme |
 |---|---|
-| <img width="455" height="527" alt="image" src="https://github.com/user-attachments/assets/4e7c2b22-4183-4fa2-8254-c8891227d79f" /> | <img width="460" height="532" alt="image" src="https://github.com/user-attachments/assets/1f4427f3-c258-4a65-bdc3-955133f42e4e" /> |
+| <img width="501" height="531" alt="image" src="https://github.com/user-attachments/assets/7fe739ae-74b6-435e-ae77-7797c6c109d4" /> | <img width="502" height="533" alt="image" src="https://github.com/user-attachments/assets/5f03e81c-033f-45a9-bc79-c9aeb53bb0c9" /> |
 
 ### Hardware
 
@@ -46,7 +46,7 @@ A responsive Lovelace card for [Home Assistant](https://www.home-assistant.io/) 
 - Download, upload, latency, and bandwidth history monitoring
 - System information: WAN, model, hardware, firmware, network, and uptime
 - Hardware monitoring: storage, RAID, fans, and temperatures
-- Wi-Fi control and Freebox reboot with confirmation
+- Wi-Fi control, confirmed Freebox reboot, and direct Freebox OS access with an optional IP address
 - Telephony with missed call monitoring and reset
 - Connected, disconnected, and disabled device tracking with detailed lists
 - Customizable interface with reorderable sections, visibility controls, and optional header and background
@@ -101,11 +101,15 @@ The card attempts to select the Freebox automatically by locating a `device_trac
 | `latency_entity` | string | no | auto-detected | Latency sensor. If not configured, the card automatically selects the first Ping integration sensor containing `average` or `moyen` in its name |
 | `download_bandwidth` | number | no | — | Maximum download bandwidth in Mbit/s, used to calculate the gauge percentage |
 | `upload_bandwidth` | number | no | — | Maximum upload bandwidth in Mbit/s, used to calculate the gauge percentage |
+| `show_live_metrics` | boolean | no | `true` | Show real-time bandwidth metrics |
 | `show_bandwidth_history` | boolean | no | `true` | Show the bandwidth history chart |
+| `show_history_maximums` | boolean | no | `true` | Show maximum values on the chart |
 | `history_hours` | number | no | `8` | Number of hours displayed in the bandwidth history chart, from 1 to 168 |
 | `section_order` | list | no | see below | Display order for card sections |
 | `show_internet` | boolean | no | `true` | Show bandwidth information |
 | `show_system` | boolean | no | `true` | Show system information and actions |
+| `show_admin_console_button` | boolean | no | `true` | Show the Freebox OS access button in the System section |
+| `admin_console_ip` | string | no | — | Optional IPv4 address used to access Freebox OS when `mafreebox.freebox.fr` is unavailable |
 | `show_hardware` | boolean | no | `true` | Show storage, RAID, fans, and temperatures |
 | `show_telephony` | boolean | no | `true` | Show missed call information |
 | `show_devices` | boolean | no | `true` | Show device tracker statistics and lists |
@@ -132,20 +136,31 @@ The Bandwidth section includes a history chart for download and upload traffic.
 The chart:
 
 - Uses Home Assistant history data from the detected Freebox download and upload sensors
-- Displays the last 8 hours by default
+- Displays the last 24 hours by default
 - Supports a configurable period from 1 to 168 hours
-- Uses adaptive scaling and data aggregation to improve readability
+- Groups data into 5-minute periods and displays the average for each period
+- Uses responsive axes and adaptive scaling for desktop and mobile readability
+- Shows Download and Upload values on hover
+- Supports optional maximum value indicators directly on the chart
 - Can be disabled independently from the Bandwidth section
 
 The history settings are available under **Card layout > Bandwidth** in the visual editor.
+
+## 🌐 Freebox OS access
+
+The **System** section provides a button that opens the Freebox OS administration interface.
+
+- Without a custom setting, the button uses `http://mafreebox.freebox.fr/`
+- If a VPN or DNS configuration blocks that address, set `admin_console_ip` to a local IPv4 address, for example `192.168.1.254`
+- The Freebox OS button can be hidden with `show_admin_console_button: false`
 
 ## 🛠️ Troubleshooting
 
 - Confirm that the official Freebox integration is loaded and its entities are available.
 - If automatic detection fails, select the Freebox manually in the visual editor.
 - Confirm that the main tracker is named `device_tracker.freebox` or starts with `device_tracker.freebox_`.
-- Enable the **Debug** section to review integration entities and device trackers.
-- Use the save icon in **Debug > Configuration** or **Debug > Device trackers** to export diagnostic data as a text file.
+- Enable the **Debug** section to review integration entities, the selected Freebox `device_attr` values, and device trackers.
+- Use the save icon in **Debug > Configuration** or **Debug > Device trackers** to export diagnostic data.
 
 ## 🔒 Security
 
