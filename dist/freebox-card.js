@@ -1570,7 +1570,7 @@ class FreeboxCard extends HTMLElement {
 			.history-empty { display:grid; place-items:center; box-sizing:border-box; min-height:173px; margin-top:14px; color:var(--secondary-text-color); font-size:11px; }
 			.internet-metric { position:relative; display:grid; grid-template-columns:40px minmax(0,1fr); grid-template-rows:min-content min-content; column-gap:8px; align-items:center; min-width:0; padding:7px 8px; border:1px solid var(--divider-color); border-radius:12px; color:var(--primary-text-color); background:var(--card-background-color); font:inherit; text-align:left; }
 			.internet-metric svg { grid-row:1 / 3; width:40px; height:40px; transform:rotate(-90deg); }
-			.metric-icon { position:absolute; left:8px; top:50%; display:flex; align-items:center; justify-content:center; width:40px; height:40px; transform:translateY(-50%); pointer-events:none; }
+			.metric-icon { position:absolute; left:8px; top:calc(50% - 3px); display:flex; align-items:center; justify-content:center; width:40px; height:40px; transform:translateY(-50%); pointer-events:none; }
 			.metric-icon ha-icon { display:block; width:16px; height:16px; --mdc-icon-size:16px; will-change:transform,opacity; }
 			.metric-track, .metric-value { fill:none; stroke-width:4; }
 			.metric-track { stroke:var(--divider-color); }
