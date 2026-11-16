@@ -14,13 +14,13 @@ Une carte Lovelace responsive pour [Home Assistant](https://www.home-assistant.i
 
 | Thème clair | Thème sombre |
 |---|---|
-| <img width="502" height="345" alt="image" src="https://github.com/user-attachments/assets/6f3deaa2-6977-44e8-81d3-92db7fafbac8" /> | <img width="503" height="346" alt="image" src="https://github.com/user-attachments/assets/b27fff26-674e-49b2-aada-6fdf020acd8e" /> |
+| <img width="501" height="371" alt="image" src="https://github.com/user-attachments/assets/a2fec276-2bbf-4a93-a037-2ef7be1e6454" /> | <img width="504" height="371" alt="image" src="https://github.com/user-attachments/assets/a54ae33f-6770-4f84-bde9-d6ebf1bc53a9" /> |
 
 ### Système
 
 | Thème clair | Thème sombre |
 |---|---|
-| <img width="459" height="529" alt="image" src="https://github.com/user-attachments/assets/ba98aef7-99c6-44f5-9361-6ef97e35eec6" /> | <img width="462" height="532" alt="image" src="https://github.com/user-attachments/assets/4220da9f-d982-42ae-8af4-6ca403dbf878" /> |
+| <img width="500" height="530" alt="image" src="https://github.com/user-attachments/assets/5fff20c3-7176-492f-b6e8-d592904f76b2" /> | <img width="502" height="533" alt="image" src="https://github.com/user-attachments/assets/a8f6cedf-f0b9-4757-96e5-321ab83b25fb" /> |
 
 ### Matériel
 
@@ -46,7 +46,7 @@ Une carte Lovelace responsive pour [Home Assistant](https://www.home-assistant.i
 - Suivi des débits descendant et montant, de la latence et de leur historique
 - Informations système : WAN, modèle, hardware, firmware, réseau et disponibilité
 - Surveillance du matériel : stockage, RAID, ventilateurs et températures
-- Contrôle du Wi-Fi et redémarrage de la Freebox avec confirmation
+- Contrôle du Wi-Fi, redémarrage avec confirmation et accès direct à Freebox OS, avec adresse IP optionnelle
 - Téléphonie avec suivi et réinitialisation des appels manqués
 - Suivi des appareils connectés, déconnectés et désactivés avec listes détaillées
 - Interface personnalisable : sections réorganisables, visibilité, en-tête et fond configurables
@@ -101,11 +101,15 @@ La carte essaie de sélectionner automatiquement la Freebox en recherchant une e
 | `latency_entity` | chaîne | non | détection automatique | Capteur de latence. Si absent, la carte recherche le premier capteur Ping contenant `average` ou `moyen` |
 | `download_bandwidth` | nombre | non | — | Débit descendant maximal en Mbit/s, utilisé pour calculer le pourcentage de la jauge |
 | `upload_bandwidth` | nombre | non | — | Débit montant maximal en Mbit/s, utilisé pour calculer le pourcentage de la jauge |
+| `show_live_metrics` | booléen | non | `true` | Afficher les mesures de bande passante en temps réel |
 | `show_bandwidth_history` | booléen | non | `true` | Afficher le graphique d’historique de la bande passante |
+| `show_history_maximums` | booléen | non | `true` | Afficher les valeurs maximales sur le graphique |
 | `history_hours` | nombre | non | `8` | Nombre d’heures affichées dans l’historique de la bande passante, de 1 à 168 |
 | `section_order` | liste | non | voir ci-dessous | Ordre d’affichage des sections |
 | `show_internet` | booléen | non | `true` | Afficher les informations de bande passante |
 | `show_system` | booléen | non | `true` | Afficher les informations système et les actions |
+| `show_admin_console_button` | booléen | non | `true` | Afficher le bouton d’accès à Freebox OS dans la section Système |
+| `admin_console_ip` | chaîne | non | — | Adresse IPv4 optionnelle utilisée pour accéder à Freebox OS lorsque `mafreebox.freebox.fr` n’est pas accessible |
 | `show_hardware` | booléen | non | `true` | Afficher le stockage, le RAID, les ventilateurs et les températures |
 | `show_telephony` | booléen | non | `true` | Afficher les appels manqués |
 | `show_devices` | booléen | non | `true` | Afficher les statistiques et listes des appareils |
@@ -132,20 +136,31 @@ La section **Bande passante** inclut un graphique affichant l’historique des d
 Le graphique :
 
 - Utilise les données historiques Home Assistant des capteurs de débit descendant et montant détectés pour la Freebox
-- Affiche les 8 dernières heures par défaut
+- Affiche les 24 dernières heures par défaut
 - Permet de configurer une période de 1 à 168 heures
-- Utilise une échelle adaptative et une agrégation des données pour améliorer la lisibilité
+- Regroupe les données par périodes de 5 minutes et affiche la moyenne de chaque période
+- Utilise des axes responsives et une échelle adaptative pour rester lisible sur ordinateur et mobile
+- Affiche les valeurs Download et Upload au survol
+- Peut afficher ou masquer les valeurs maximales directement sur le graphique
 - Peut être masqué indépendamment de la section **Bande passante**
 
 Les paramètres de l’historique sont disponibles dans **Disposition de la carte > Bande passante** dans le configurateur visuel.
+
+## 🌐 Accès à Freebox OS
+
+La section **Système** propose un bouton ouvrant l’interface d’administration Freebox OS.
+
+- Sans configuration spécifique, le bouton utilise `http://mafreebox.freebox.fr/`
+- Si votre VPN ou votre DNS bloque cette adresse, renseignez `admin_console_ip` avec une adresse IPv4 locale, par exemple `192.168.1.254`
+- Le bouton Freebox OS peut être masqué avec `show_admin_console_button: false`
 
 ## 🛠️ Dépannage
 
 - Vérifiez que l’intégration Freebox officielle est chargée et que ses entités sont disponibles.
 - Si la détection automatique échoue, sélectionnez la Freebox manuellement dans le configurateur.
 - Vérifiez que le tracker principal est nommé `device_tracker.freebox` ou commence par `device_tracker.freebox_`.
-- Activez la section **Debug** pour examiner les entités de l’intégration et les suivis d’appareils.
-- Utilisez l’icône de sauvegarde dans **Debug > Configuration** ou **Debug > Device trackers** pour exporter les données de diagnostic dans un fichier texte.
+- Activez la section **Debug** pour examiner les entités de l’intégration, les attributs `device_attr` de la Freebox sélectionnée et les suivis d’appareils.
+- Utilisez l’icône de sauvegarde dans **Debug > Configuration** ou **Debug > Device trackers** pour exporter les données de diagnostic.
 
 ## 🔒 Sécurité
 
