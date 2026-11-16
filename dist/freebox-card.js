@@ -5,7 +5,7 @@
  *
  * License: MIT
  */
-const CARD_VERSION = "2026.11.2";
+const CARD_VERSION = "2026.11.3";
 
 /* ---------------------------------------------------------------------- */
 /*  Languages                                                             */
@@ -48,6 +48,8 @@ const TRANSLATIONS = {
 			history_max: "Max",
 			no_history: "No history available",
 			latency: "Latency",
+			packet_loss: "Packet loss",
+			network_quality_history: "Latency & packet loss history",
 			excellent: "Excellent",
 			correct: "Fair",
 			poor: "Poor",
@@ -84,6 +86,7 @@ const TRANSLATIONS = {
 			download_bandwidth: "Download bandwidth (Mbit/s)",
 			upload_bandwidth: "Upload bandwidth (Mbit/s)",
 			latency_entity: "Latency sensor",
+			packet_loss_entity: "Packet loss sensor",
 			live_metrics: "Live metrics",
 			show_live_metrics: "Show real-time bandwidth metrics",
 			show_history_maximums: "Show maximum values",
@@ -97,6 +100,7 @@ const TRANSLATIONS = {
 			show_admin_console_button: "Show Freebox OS button",
 			admin_console_ip: "Freebox OS IP address (Keep empty to use default url)",
 			show_bandwidth_history: "Show bandwidth history",
+			show_network_quality_history: "Show latency and packet loss history",
 			history_hours: "History period (hours)",
 			internet: "Bandwidth",
 			system: "System",
@@ -155,6 +159,8 @@ const TRANSLATIONS = {
 			history_max: "Max",
 			no_history: "Aucun historique disponible",
 			latency: "Latence",
+			packet_loss: "Perte de paquets",
+			network_quality_history: "Historique latence et perte de paquets",
 			excellent: "Excellent",
 			correct: "Correcte",
 			poor: "Mauvais",
@@ -190,6 +196,7 @@ const TRANSLATIONS = {
 			download_bandwidth: "Débit descendant (Mbit/s)",
 			upload_bandwidth: "Débit montant (Mbit/s)",
 			latency_entity: "Capteur de latence",
+			packet_loss_entity: "Capteur de perte de paquets",
 			live_metrics: "Mesures en temps réel",
 			show_live_metrics: "Afficher les mesures de bande passante en temps réel",
 			show_history_maximums: "Afficher les valeurs maximales",
@@ -203,6 +210,7 @@ const TRANSLATIONS = {
 			show_admin_console_button: "Afficher le bouton Freebox OS",
 			admin_console_ip: "Adresse IP de Freebox OS (Garder vide pour utiliser l'url par défaut)",
 			show_bandwidth_history: "Afficher l’historique de la bande passante",
+			show_network_quality_history: "Afficher l’historique de la latence et de la perte de paquets",
 			history_hours: "Période de l’historique (heures)",
 			internet: "Bande passante",
 			system: "Système",
@@ -301,6 +309,7 @@ class FreeboxCard extends HTMLElement {
 		show_admin_console_button: true,
 		admin_console_ip: "",
 		show_bandwidth_history: true,
+		show_network_quality_history: true,
 		show_live_metrics: true,
 		show_history_maximums: true,
 		history_hours: "24",
@@ -324,14 +333,15 @@ class FreeboxCard extends HTMLElement {
 		this._registryLoaded = false;
 		this._registryLoading = false;
 		this._bandwidthHistory = { key: "", loadedAt: 0, loading: false, series: {} };
+		this._networkQualityHistory = { key: "", loadedAt: 0, loading: false, series: {} };
 		this._lastRenderSignature = "";
 	}
 
 	setConfig(config) {
 		const source = config && typeof config === "object" ? config : {};
 		const safeConfig = {};
-		const stringFields = ["name", "device_id", "latency_entity", "download_bandwidth", "upload_bandwidth", "history_hours", "admin_console_ip"];
-		const booleanFields = ["show_internet", "show_system", "show_hardware", "show_storage_raid", "show_fans", "show_temperatures", "show_telephony", "show_devices", "show_connected_tile", "show_disconnected_tile", "show_disabled_tile", "show_total_tile", "show_connected_devices_list", "show_disconnected_devices_list", "show_debug", "show_header", "show_card_background", "show_wifi_button", "show_reboot_button", "show_admin_console_button", "show_bandwidth_history", "show_live_metrics", "show_history_maximums"];
+		const stringFields = ["name", "device_id", "latency_entity", "packet_loss_entity", "download_bandwidth", "upload_bandwidth", "history_hours", "admin_console_ip"];
+		const booleanFields = ["show_internet", "show_system", "show_hardware", "show_storage_raid", "show_fans", "show_temperatures", "show_telephony", "show_devices", "show_connected_tile", "show_disconnected_tile", "show_disabled_tile", "show_total_tile", "show_connected_devices_list", "show_disconnected_devices_list", "show_debug", "show_header", "show_card_background", "show_wifi_button", "show_reboot_button", "show_admin_console_button", "show_bandwidth_history", "show_network_quality_history", "show_live_metrics", "show_history_maximums"];
 		for (const key of stringFields)
 			if (typeof source[key] === "string") safeConfig[key] = source[key].slice(0, 512);
 		for (const key of booleanFields)
@@ -360,6 +370,7 @@ class FreeboxCard extends HTMLElement {
 		for (const id of this._getDeviceEntities()) entityIds.add(id);
 		for (const entity of this._getIntegrationEntities()) if (entity?.entity_id) entityIds.add(entity.entity_id);
 		if (this._config.latency_entity) entityIds.add(this._config.latency_entity);
+		if (this._config.packet_loss_entity) entityIds.add(this._config.packet_loss_entity);
 		const states = [...entityIds].sort().map((entityId) => {
 			const state = hass.states?.[entityId];
 			if (!state) return [entityId, null];
@@ -644,11 +655,26 @@ class FreeboxCard extends HTMLElement {
 			.sort((a, b) => a.localeCompare(b))[0];
 	}
 
+	_findPacketLoss() {
+		const configured = this._config?.packet_loss_entity;
+		if (configured && this._hass.states[configured]) return configured;
+		const candidates = Object.keys(this._hass.states || {})
+			.filter((entityId) => entityId.startsWith("sensor."))
+			.filter((entityId) => {
+				const state = this._hass.states[entityId];
+				const text = `${entityId} ${state?.attributes?.friendly_name || ""}`.toLowerCase();
+				return /packet[_\s-]?loss|perte[_\s-]?de[_\s-]?paquets?/.test(text);
+			})
+			.sort((a, b) => a.localeCompare(b));
+		return candidates[0] || "";
+	}
+
 	_resolveEntities() {
 		return {
 			download: this._find("sensor", ["download", "telechargement", "vitesse_de_telechargement"]),
 			upload: this._find("sensor", ["upload", "envoi", "vitesse_d_envoi"]),
 			latency: this._config?.latency_entity && this._hass.states[this._config.latency_entity] ? this._config.latency_entity : this._findPingLatency(),
+			packetLoss: this._findPacketLoss(),
 			uptime: this._getIntegrationEntityIds().find((id) => id === "sensor.freebox_uptime" || /uptime|temps_de_fonctionnement/i.test(id)),
 			hardwareTemperatures: this._getIntegrationEntityIds().filter((id) => {
 				if (!id.startsWith("sensor."))
@@ -852,6 +878,7 @@ class FreeboxCard extends HTMLElement {
 		});
 		this._initializeBandwidthHistoryTooltip();
 		this._initializeBandwidthHistoryAxis();
+		this._initializeNetworkQualityChart();
 	}
 
 	_initializeBandwidthHistoryAxis() {
@@ -936,6 +963,62 @@ class FreeboxCard extends HTMLElement {
 			tooltip.style.left = `${tooltipLeft}px`; tooltip.style.top = "6px";
 		});
 		overlay.addEventListener("pointerleave", hide);
+	}
+
+	_initializeNetworkQualityChart() {
+		const chart = this.shadowRoot?.querySelector(".quality-chart[data-history-start]");
+		if (!chart) return;
+		const axis = chart.querySelector(".history-x");
+		const overlay = chart.querySelector(".quality-hover-overlay");
+		const tooltip = chart.querySelector(".quality-tooltip");
+		const cursor = chart.querySelector(".quality-cursor");
+		const latencyDot = chart.querySelector(".quality-hover-latency");
+		const lossDot = chart.querySelector(".quality-hover-loss");
+		const start = Number(chart.dataset.historyStart), end = Number(chart.dataset.historyEnd);
+		const latencyMaximum = Number(chart.dataset.latencyMax), lossMaximum = Number(chart.dataset.lossMax);
+		const hours = Number(axis?.dataset.historyHours) || 24;
+		const formatter = new Intl.DateTimeFormat(this._getLanguage(), { hour: "2-digit", minute: "2-digit", hour12: false });
+		const renderAxis = () => {
+			const width = axis?.getBoundingClientRect().width || 0;
+			if (!width) return;
+			const target = Math.max(4, Math.min(10, Math.floor(width / 52)));
+			const ideal = hours / Math.max(1, target - 1);
+			const step = [1,2,3,4,6,8,12,24,48].find((value) => value >= ideal) || 48;
+			let tick = Math.ceil(start / 3600000) * 3600000;
+			while (new Date(tick).getHours() % Math.min(step,24) !== 0) tick += 3600000;
+			const ticks=[]; for (; tick<=end; tick += step*3600000) ticks.push(tick);
+			axis.innerHTML = ticks.map((timestamp) => `<span style="left:${(timestamp-start)/Math.max(end-start,1)*100}%"><i></i>${this._escape(formatter.format(new Date(timestamp)))}</span>`).join("");
+		};
+		renderAxis();
+		if (typeof ResizeObserver !== "undefined") { this._networkAxisObserver?.disconnect(); this._networkAxisObserver = new ResizeObserver(renderAxis); this._networkAxisObserver.observe(axis); }
+		if (!overlay || !tooltip || !cursor) return;
+		const latencySeries=this._networkQualityHoverData?.latency||[], lossSeries=this._networkQualityHoverData?.packetLoss||[];
+		const nearest=(series,timestamp)=>series.length?series.reduce((best,p)=>Math.abs(p.timestamp-timestamp)<Math.abs(best.timestamp-timestamp)?p:best,series[0]):null;
+		const number=new Intl.NumberFormat(this._getLanguage(),{minimumFractionDigits:1,maximumFractionDigits:1});
+		const time=new Intl.DateTimeFormat(this._getLanguage(),{hour:"2-digit",minute:"2-digit"});
+		const hide=()=>{ tooltip.hidden=true; cursor.hidden=true; if(latencyDot)latencyDot.hidden=true; if(lossDot)lossDot.hidden=true; };
+		overlay.addEventListener("pointermove",(event)=>{
+			const rect=overlay.getBoundingClientRect();
+			if(!rect.width)return;
+			const ratio=Math.min(1,Math.max(0,(event.clientX-rect.left)/rect.width));
+			const timestamp=start+ratio*(end-start);
+			const latency=nearest(latencySeries,timestamp), loss=nearest(lossSeries,timestamp);
+			const reference=[latency,loss].filter(Boolean).sort((a,b)=>Math.abs(a.timestamp-timestamp)-Math.abs(b.timestamp-timestamp))[0];
+			if(!reference)return hide();
+			const xRatio=(reference.timestamp-start)/Math.max(end-start,1);
+			const x=rect.left-chart.getBoundingClientRect().left+xRatio*rect.width;
+			cursor.style.left=`${x}px`; cursor.hidden=false;
+			const placeDot=(dot,point,maximum)=>{ if(!dot||!point||!maximum)return; dot.hidden=false; dot.style.left=`${x}px`; dot.style.top=`${Math.min(1,Math.max(0,1-point.value/maximum))*135}px`; };
+			placeDot(latencyDot,latency,latencyMaximum); placeDot(lossDot,loss,lossMaximum);
+			tooltip.innerHTML=`<strong>${this._escape(time.format(new Date(reference.timestamp)))}</strong>${latency?`<span><i class="latency"></i>${this._t("latency")}: <b>${number.format(latency.value)} ms</b></span>`:""}${loss?`<span><i class="loss"></i>${this._t("packet_loss")}: <b>${number.format(loss.value)} %</b></span>`:""}`;
+			tooltip.hidden=false;
+			const chartRect=chart.getBoundingClientRect(), gap=14, plotLeft=24, plotRight=35;
+			const maxLeft=Math.max(plotLeft,chartRect.width-tooltip.offsetWidth-plotRight);
+			const roomRight=chartRect.width-plotRight-x;
+			const tooltipLeft=roomRight>=tooltip.offsetWidth+gap?Math.min(x+gap,maxLeft):Math.max(plotLeft,x-tooltip.offsetWidth-gap);
+			tooltip.style.left=`${tooltipLeft}px`; tooltip.style.top="6px";
+		});
+		overlay.addEventListener("pointerleave",hide);
 	}
 
 	_formatSpeed(entityId) {
@@ -1082,6 +1165,29 @@ class FreeboxCard extends HTMLElement {
 		this._render();
 	}
 
+	async _loadNetworkQualityHistory(latencyEntity, packetLossEntity) {
+		if (!this._hass?.callApi || !this._config.show_network_quality_history) return;
+		const entityIds = [latencyEntity, packetLossEntity].filter((id) => this._isValidEntityId(id));
+		if (!entityIds.length) return;
+		const hours = Math.min(Math.max(Number.parseInt(this._config.history_hours, 10) || 24, 1), 168);
+		const key = `${entityIds.join("|")}|${hours}`;
+		const fresh = this._networkQualityHistory.key === key && Date.now() - this._networkQualityHistory.loadedAt < 300000;
+		if (fresh || this._networkQualityHistory.loading) return;
+		this._networkQualityHistory = { ...this._networkQualityHistory, key, loading: true };
+		try {
+			const end = new Date();
+			const start = new Date(end.getTime() - hours * 3600000);
+			const query = new URLSearchParams({ filter_entity_id: entityIds.join(","), end_time: end.toISOString(), significant_changes_only: "0" });
+			const history = await this._hass.callApi("GET", `history/period/${start.toISOString()}?${query.toString()}`);
+			const series = Object.fromEntries(entityIds.map((id) => [id, this._normalizeBandwidthHistory(history, id)]));
+			this._networkQualityHistory = { key, loadedAt: Date.now(), loading: false, series };
+		} catch (error) {
+			console.error("[freebox-card][network-history] Unable to load history", error);
+			this._networkQualityHistory = { key, loadedAt: Date.now(), loading: false, series: {} };
+		}
+		this._render();
+	}
+
 	_groupBandwidthHistory(points, start, end, duration = 300000) {
 		const visible = points.filter((point) =>
 			point.timestamp >= start && point.timestamp <= end && Number.isFinite(point.value));
@@ -1184,6 +1290,56 @@ class FreeboxCard extends HTMLElement {
 		return `<div class="bandwidth-history${this._config.show_live_metrics === false ? " no-live-metrics" : ""}"><div class="history-title"><span>${this._t("bandwidth_history")}</span><small>${this._t("history_method")} · ${hours} h</small></div><div class="history-chart" data-history-start="${start}" data-history-end="${end}" data-history-maximum="${roundedMaximum}"><div class="history-unit">Mbit/s</div><div class="history-y">${yLabels}</div><svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-label="${this._escape(this._t("bandwidth_history"))}"><defs><linearGradient id="freebox-download-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#2196f3" stop-opacity=".55"></stop><stop offset="100%" stop-color="#2196f3" stop-opacity=".10"></stop></linearGradient><linearGradient id="freebox-upload-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#4caf50" stop-opacity=".50"></stop><stop offset="100%" stop-color="#4caf50" stop-opacity=".09"></stop></linearGradient></defs>${horizontalGrid}${downloadArea ? `<path class="history-area history-download-area" d="${downloadArea}"></path>` : ""}${uploadArea ? `<path class="history-area history-upload-area" d="${uploadArea}"></path>` : ""}${downloadPath ? `<path class="history-line history-download" d="${downloadPath}"></path>` : ""}${uploadPath ? `<path class="history-line history-upload" d="${uploadPath}"></path>` : ""}${downloadMaxMarker}${uploadMaxMarker}</svg><div class="history-hover-overlay" aria-label="Bandwidth history values"></div><div class="history-cursor" hidden></div><span class="history-hover-dot history-hover-download" hidden></span><span class="history-hover-dot history-hover-upload" hidden></span><div class="history-tooltip" hidden></div><div class="history-x" data-history-hours="${hours}">${labels}</div></div></div>`;
 	}
 
+	_networkQualityHistoryChart(latencyEntity, packetLossEntity) {
+		if (!this._config.show_network_quality_history || (!latencyEntity && !packetLossEntity)) return "";
+		const hours = Math.min(Math.max(Number.parseInt(this._config.history_hours, 10) || 24, 1), 168);
+		const end = Date.now();
+		const start = end - hours * 3600000;
+		const latency = this._groupBandwidthHistory(this._networkQualityHistory.series[latencyEntity] || [], start, end, 5 * 60 * 1000);
+		const packetLoss = this._groupBandwidthHistory(this._networkQualityHistory.series[packetLossEntity] || [], start, end, 5 * 60 * 1000);
+		if (!latency.length && !packetLoss.length) return "";
+		const width = 600, height = 135;
+		const latencyPeak = Math.max(0, ...latency.map((point) => point.value));
+		const latencyTarget = Math.max(5, latencyPeak / .82);
+		const latencyStep = latencyTarget <= 20 ? 5 : latencyTarget <= 50 ? 10 : Math.ceil(latencyTarget / 40) * 10;
+		const latencyMax = Math.max(latencyStep, Math.ceil(latencyTarget / latencyStep) * latencyStep);
+		const lossMax = 100;
+		const x = (timestamp) => ((timestamp - start) / Math.max(end - start, 1)) * width;
+		const latencyY = (value) => height - Math.min(Math.max(value / latencyMax, 0), 1) * height;
+		const lossY = (value) => height - Math.min(Math.max(value / lossMax, 0), 1) * height;
+		const latencyPath = this._historyPath(latency, start, end, latencyMax, width, height);
+		const latencyArea = this._historyAreaPath(latencyPath, latency, start, end, width, height);
+		const segments = [];
+		for (let index = 1; index < latency.length; index += 1) {
+			const previous = latency[index - 1], current = latency[index];
+			const average = (previous.value + current.value) / 2;
+			const tone = average > 30 ? "high" : average > 10 ? "medium" : "low";
+			segments.push(`<line class="quality-latency-line ${tone}" x1="${x(previous.timestamp).toFixed(1)}" y1="${latencyY(previous.value).toFixed(1)}" x2="${x(current.timestamp).toFixed(1)}" y2="${latencyY(current.value).toFixed(1)}"></line>`);
+		}
+		const barWidth = Math.max(2, Math.min(8, width / Math.max(packetLoss.length, 1) * .65));
+		const bars = packetLoss.map((point) => { const px = x(point.timestamp); const py = lossY(point.value); return `<rect class="quality-loss-bar" x="${(px - barWidth / 2).toFixed(1)}" y="${py.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${Math.max(0, height - py).toFixed(1)}" rx="1"></rect>`; }).join("");
+		const tickCount = 4;
+		const ticks = Array.from({ length: tickCount + 1 }, (_, index) => index / tickCount);
+		const grid = ticks.map((ratio) => `<line class="history-horizontal-grid" x1="0" y1="${(height * ratio).toFixed(1)}" x2="${width}" y2="${(height * ratio).toFixed(1)}"></line>`).join("");
+		const leftLabels = [...ticks].reverse().map((ratio) => `<span style="top:${(1-ratio)*100}%">${Math.round(latencyMax*ratio)}</span>`).join("");
+		const rightLabels = [...ticks].reverse().map((ratio) => `<span style="top:${(1-ratio)*100}%">${Math.round(lossMax*ratio)}</span>`).join("");
+		const formatter = new Intl.NumberFormat(this._getLanguage(), { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+		const marker = (series, maximum, cssClass, scaleMaximum, unit) => {
+			if (!series.length || maximum <= 0 || this._config.show_history_maximums === false) return "";
+			const point = series.reduce((best, item) => item.value > best.value ? item : best, series[0]);
+			const px = x(point.timestamp), py = height - Math.min(Math.max(point.value / scaleMaximum, 0), 1) * height;
+			const label = `${formatter.format(maximum)}${unit}`;
+			const labelWidth = Math.max(44, label.length * 7 + 14), labelX = Math.min(Math.max(px, labelWidth/2+2), width-labelWidth/2-2);
+			const labelBottom = py - 9, labelHeight = 19, labelTop = labelBottom - labelHeight;
+			return `<g class="quality-max-marker ${cssClass}"><line x1="${px.toFixed(1)}" y1="${labelBottom.toFixed(1)}" x2="${px.toFixed(1)}" y2="${(py-3).toFixed(1)}"></line><rect x="${(labelX-labelWidth/2).toFixed(1)}" y="${labelTop.toFixed(1)}" width="${labelWidth.toFixed(1)}" height="${labelHeight}" rx="4"></rect><text x="${labelX.toFixed(1)}" y="${(labelTop+14).toFixed(1)}" text-anchor="middle">${this._escape(label)}</text><circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="2.5"></circle></g>`;
+		};
+		const latencyMaxMarker = marker(latency, latencyPeak, "latency", latencyMax, "");
+		const lossPeak = Math.max(0, ...packetLoss.map((point) => point.value));
+		const lossMaxMarker = marker(packetLoss, lossPeak, "loss", lossMax, "%");
+		this._networkQualityHoverData = { latency, packetLoss };
+		return `<div class="network-quality-history"><div class="history-title"><span>${this._t("network_quality_history")}</span><small>${this._t("history_method")} · ${hours} h</small></div><div class="quality-chart" data-history-start="${start}" data-history-end="${end}" data-latency-max="${latencyMax}" data-loss-max="${lossMax}"><div class="quality-unit left">${this._t("latency")} (ms)</div><div class="quality-y left">${leftLabels}</div><svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none"><defs><linearGradient id="freebox-latency-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#43a047" stop-opacity=".42"></stop><stop offset="100%" stop-color="#43a047" stop-opacity=".06"></stop></linearGradient></defs>${grid}${latencyArea ? `<path class="quality-latency-area" d="${latencyArea}"></path>` : ""}${bars}${segments.join("")}${latencyMaxMarker}${lossMaxMarker}</svg><div class="quality-y right">${rightLabels}</div><div class="quality-unit right">${this._t("packet_loss")} (%)</div><div class="quality-hover-overlay"></div><div class="quality-cursor" hidden></div><span class="quality-hover-dot quality-hover-latency" hidden></span><span class="quality-hover-dot quality-hover-loss" hidden></span><div class="quality-tooltip" hidden></div><div class="history-x" data-history-hours="${hours}"></div></div></div>`;
+	}
+
 	_internetSection(e, info) {
 		const latencyMetric = this._latencyMetric(e.latency);
 		const metrics = [
@@ -1197,11 +1353,14 @@ class FreeboxCard extends HTMLElement {
 			? `<div class="live-metrics-block"><div class="subsection-title">${this._t("live_bandwidth")}</div><div class="${metricsClass}">${metrics}</div></div>`
 			: "";
 		const historyChart = this._bandwidthHistoryChart(e.download, e.upload);
+		const qualityHistoryChart = this._networkQualityHistoryChart(e.latency, e.packetLoss);
 		setTimeout(() => this._loadBandwidthHistory(e.download, e.upload), 0);
+		setTimeout(() => this._loadNetworkQualityHistory(e.latency, e.packetLoss), 0);
 		return `<section class="panel internet-panel">
 			<div class="section-title"><ha-icon icon="mdi:speedometer"></ha-icon>${this._t("internet")}</div>
 			${liveMetrics}
 			${historyChart}
+			${qualityHistoryChart}
 		</section>`;
 	}
 
@@ -1624,6 +1783,28 @@ class FreeboxCard extends HTMLElement {
 			.history-x span:last-child { transform:translateX(-100%); }
 			@media (max-width:520px) { .history-x { font-size:9px; } .history-chart { grid-template-columns:23px minmax(0,1fr); } .history-hover-overlay { left:23px; } .history-unit { left:-8px; font-size:10px; } .history-y span { right:5px; } }
 			.history-empty { display:grid; place-items:center; box-sizing:border-box; min-height:173px; margin-top:14px; color:var(--secondary-text-color); font-size:11px; }
+			.network-quality-history { margin-top:14px; padding-top:12px; border-top:1px solid var(--divider-color); }
+			.quality-chart { position:relative; display:grid; grid-template-columns:0 24px minmax(0,1fr) 24px 11px; grid-template-rows:135px 24px; min-width:0; min-height:159px; margin-top:14px; }
+			.quality-chart svg { grid-column:3; width:100%; height:135px; overflow:hidden; }
+			.quality-unit { display:flex; align-items:center; justify-content:center; height:135px; color:var(--primary-text-color); font-size:10px; font-weight:700; line-height:1; writing-mode:vertical-rl; transform:rotate(180deg); white-space:nowrap; }
+			.quality-unit.left { position:absolute; left:-8px; top:0; z-index:1; width:11px; grid-column:auto; } .quality-unit.right { position:relative; right:-8px; grid-column:5; transform:none; }
+			.quality-y { position:relative; height:135px; overflow:visible; color:var(--primary-text-color); font-size:10px; font-weight:700; }
+			.quality-y.left { grid-column:2; text-align:right; } .quality-y.right { grid-column:4; text-align:left; }
+			.quality-y span { position:absolute; line-height:1; transform:translateY(-50%); white-space:nowrap; } .quality-y.left span { right:5px; } .quality-y.right span { left:5px; }
+			.quality-latency-area { fill:url(#freebox-latency-fill); stroke:none; }
+			.quality-latency-line { stroke-width:1.15; stroke-linecap:round; vector-effect:non-scaling-stroke; } .quality-latency-line.low { stroke:#43a047; } .quality-latency-line.medium { stroke:#f59e0b; } .quality-latency-line.high { stroke:#e53935; }
+			.quality-loss-bar { fill:#c62828; opacity:.88; }
+			.quality-chart .history-x { grid-column:3; }
+			.quality-hover-overlay { position:absolute; z-index:4; left:24px; right:35px; top:0; height:135px; cursor:crosshair; }
+			.quality-cursor { position:absolute; z-index:3; top:0; height:135px; border-left:1px dashed var(--secondary-text-color); pointer-events:none; opacity:.75; }
+			.quality-hover-dot { position:absolute; z-index:5; width:7px; height:7px; border:2px solid var(--card-background-color); border-radius:50%; transform:translate(-50%,-50%); pointer-events:none; }
+			.quality-hover-latency { background:#43a047; } .quality-hover-loss { background:#c62828; }
+			.quality-tooltip { position:absolute; z-index:6; top:6px; min-width:150px; padding:8px 10px; border:1px solid var(--divider-color); border-radius:7px; color:var(--primary-text-color); background:var(--ha-card-background,var(--card-background-color)); box-shadow:0 3px 12px rgba(0,0,0,.28); font-size:11px; line-height:1.35; pointer-events:none; }
+			.quality-tooltip strong,.quality-tooltip span { display:block; } .quality-tooltip strong { margin-bottom:5px; } .quality-tooltip span { margin-top:3px; white-space:nowrap; }
+			.quality-tooltip i { display:inline-block; width:7px; height:7px; margin-right:5px; border-radius:50%; } .quality-tooltip i.latency { background:#43a047; } .quality-tooltip i.loss { background:#c62828; }
+			.quality-max-marker { pointer-events:none; } .quality-max-marker line { stroke-width:1; vector-effect:non-scaling-stroke; } .quality-max-marker rect { opacity:.96; } .quality-max-marker text { fill:#fff; font-size:12px; font-weight:400; } .quality-max-marker.latency text { fill:#000; } .quality-max-marker.latency line,.quality-max-marker.latency circle { stroke:#43a047; fill:#43a047; } .quality-max-marker.latency rect { fill:#43a047; } .quality-max-marker.loss line,.quality-max-marker.loss circle { stroke:#c62828; fill:#c62828; } .quality-max-marker.loss rect { fill:#c62828; }
+			ha-card.light-theme .quality-y, ha-card.light-theme .quality-unit { color:#202124; } ha-card.dark-theme .quality-y, ha-card.dark-theme .quality-unit { color:#fff; }
+			@media (max-width:520px) { .quality-chart { grid-template-columns:0 23px minmax(0,1fr) 23px 10px; } .quality-unit { font-size:9px; } .quality-unit.left { left:-8px; width:11px; } .quality-unit.right { right:-8px; } .quality-y { font-size:9px; } .quality-hover-overlay { left:23px; right:33px; } }
 			.internet-metric { position:relative; display:grid; grid-template-columns:40px minmax(0,1fr); grid-template-rows:min-content min-content; column-gap:8px; align-items:center; min-width:0; padding:7px 8px; border:1px solid var(--divider-color); border-radius:12px; color:var(--primary-text-color); background:var(--card-background-color); font:inherit; text-align:left; }
 			.internet-metric svg { grid-row:1 / 3; width:40px; height:40px; transform:rotate(-90deg); }
 			.metric-icon { position:absolute; left:8px; top:calc(50% - 3px); display:flex; align-items:center; justify-content:center; width:40px; height:40px; transform:translateY(-50%); pointer-events:none; }
@@ -1790,6 +1971,7 @@ class FreeboxCardEditor extends HTMLElement {
 		"show_reboot_button",
 		"show_admin_console_button",
 		"show_bandwidth_history",
+		"show_network_quality_history",
 		"show_live_metrics",
 		"show_history_maximums",
 		"show_devices",
@@ -1898,13 +2080,13 @@ class FreeboxCardEditor extends HTMLElement {
 						<div class="option-group-content live-options">
 							${this._switchRow("show_live_metrics", this._et("show_live_metrics"))}
 							<div class="bandwidth-limits"><label>${this._et("download_bandwidth")}<input data-config="download_bandwidth" type="number" min="0" step="1" placeholder="10000"></label><label>${this._et("upload_bandwidth")}<input data-config="upload_bandwidth" type="number" min="0" step="1" placeholder="900"></label></div>
-							<div class="bandwidth-latency">${this._entitySelector("latency_entity", this._et("latency_entity"), "sensor")}</div>
+							<div class="bandwidth-latency">${this._entitySelector("latency_entity", this._et("latency_entity"), "sensor")}${this._entitySelector("packet_loss_entity", this._et("packet_loss_entity"), "sensor")}</div>
 						</div>
 					</div>
 					<div class="option-group">
 						<div class="option-group-title"><ha-icon icon="mdi:chart-line"></ha-icon><span>${this._et("history_settings")}</span></div>
 						<div class="option-group-content history-options">
-							<div class="history-primary">${this._switchRow("show_bandwidth_history", this._et("show_bandwidth_history"))}<label>${this._et("history_hours")}<input data-config="history_hours" type="number" min="1" max="168" step="1" placeholder="24"></label></div>
+							<div class="history-primary">${this._switchRow("show_bandwidth_history", this._et("show_bandwidth_history"))}${this._switchRow("show_network_quality_history", this._et("show_network_quality_history"))}<label>${this._et("history_hours")}<input data-config="history_hours" type="number" min="1" max="168" step="1" placeholder="24"></label></div>
 							<div class="history-secondary">${this._switchRow("show_history_maximums", this._et("show_history_maximums"))}</div>
 						</div>
 					</div>
@@ -2072,6 +2254,11 @@ class FreeboxCardEditor extends HTMLElement {
 			.sort((a, b) => a.localeCompare(b))[0] || "";
 	}
 
+	_findDefaultPacketLossEntity() {
+		if (!this._hass) return "";
+		return Object.keys(this._hass.states || {}).filter((entityId) => entityId.startsWith("sensor.")).filter((entityId) => { const state=this._hass.states[entityId]; const text=`${entityId} ${state?.attributes?.friendly_name||""}`.toLowerCase(); return /packet[_\s-]?loss|perte[_\s-]?de[_\s-]?paquets?/.test(text); }).sort((a,b)=>a.localeCompare(b))[0] || "";
+	}
+
 	_initializeEntityPickers() {
 		this.querySelectorAll("ha-entity-picker[data-config]").forEach((picker) => {
 			picker.hass = this._hass;
@@ -2194,7 +2381,7 @@ class FreeboxCardEditor extends HTMLElement {
 				element.hass = this._hass;
 				element.required = false;
 				element.hideClearIcon = false;
-				element.value = value ?? (key === "latency_entity" ? this._findDefaultLatencyEntity() : "");
+				element.value = value ?? (key === "latency_entity" ? this._findDefaultLatencyEntity() : key === "packet_loss_entity" ? this._findDefaultPacketLossEntity() : "");
 				return;
 			}
 			if (element.tagName === "HA-SWITCH") {
