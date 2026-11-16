@@ -69,6 +69,7 @@ const TRANSLATIONS = {
 			healthy: "Healthy",
 			degraded: "Degraded",
 			reboot: "Reboot",
+			admin_console: "Access to Freebox OS",
 			no_device: "Select a Freebox device in the card editor.",
 			no_entities: "No compatible Freebox entities were found.",
 			unavailable: "Unavailable",
@@ -93,6 +94,8 @@ const TRANSLATIONS = {
 			show_card_background: "Show card background",
 			show_wifi_button: "Show Wi-Fi button",
 			show_reboot_button: "Show Reboot button",
+			show_admin_console_button: "Show Freebox OS button",
+			admin_console_ip: "Freebox OS IP address (Keep empty to use default url)",
 			show_bandwidth_history: "Show bandwidth history",
 			history_hours: "History period (hours)",
 			internet: "Bandwidth",
@@ -173,6 +176,7 @@ const TRANSLATIONS = {
 			healthy: "Sain",
 			degraded: "Dégradé",
 			reboot: "Redémarrer",
+			admin_console: "Accéder à Freebox OS",
 			no_device: "Sélectionnez un appareil Freebox dans le configurateur.",
 			no_entities: "Aucune entité Freebox compatible trouvée.",
 			unavailable: "Indisponible",
@@ -196,6 +200,8 @@ const TRANSLATIONS = {
 			show_card_background: "Afficher le fond de la carte",
 			show_wifi_button: "Afficher le bouton Wi-Fi",
 			show_reboot_button: "Afficher le bouton Redémarrer",
+			show_admin_console_button: "Afficher le bouton Freebox OS",
+			admin_console_ip: "Adresse IP de Freebox OS (Garder vide pour utiliser l'url par défaut)",
 			show_bandwidth_history: "Afficher l’historique de la bande passante",
 			history_hours: "Période de l’historique (heures)",
 			internet: "Bande passante",
@@ -292,6 +298,8 @@ class FreeboxCard extends HTMLElement {
 		show_card_background: true,
 		show_wifi_button: true,
 		show_reboot_button: true,
+		show_admin_console_button: true,
+		admin_console_ip: "",
 		show_bandwidth_history: true,
 		show_live_metrics: true,
 		show_history_maximums: true,
@@ -322,8 +330,8 @@ class FreeboxCard extends HTMLElement {
 	setConfig(config) {
 		const source = config && typeof config === "object" ? config : {};
 		const safeConfig = {};
-		const stringFields = ["name", "device_id", "latency_entity", "download_bandwidth", "upload_bandwidth", "history_hours"];
-		const booleanFields = ["show_internet", "show_system", "show_hardware", "show_storage_raid", "show_fans", "show_temperatures", "show_telephony", "show_devices", "show_connected_tile", "show_disconnected_tile", "show_disabled_tile", "show_total_tile", "show_connected_devices_list", "show_disconnected_devices_list", "show_debug", "show_header", "show_card_background", "show_wifi_button", "show_reboot_button", "show_bandwidth_history", "show_live_metrics", "show_history_maximums"];
+		const stringFields = ["name", "device_id", "latency_entity", "download_bandwidth", "upload_bandwidth", "history_hours", "admin_console_ip"];
+		const booleanFields = ["show_internet", "show_system", "show_hardware", "show_storage_raid", "show_fans", "show_temperatures", "show_telephony", "show_devices", "show_connected_tile", "show_disconnected_tile", "show_disabled_tile", "show_total_tile", "show_connected_devices_list", "show_disconnected_devices_list", "show_debug", "show_header", "show_card_background", "show_wifi_button", "show_reboot_button", "show_admin_console_button", "show_bandwidth_history", "show_live_metrics", "show_history_maximums"];
 		for (const key of stringFields)
 			if (typeof source[key] === "string") safeConfig[key] = source[key].slice(0, 512);
 		for (const key of booleanFields)
@@ -1197,6 +1205,15 @@ class FreeboxCard extends HTMLElement {
 		</section>`;
 	}
 
+	_getAdminConsoleUrl() {
+		const configured = String(this._config?.admin_console_ip || "").trim();
+		if (!configured) return "http://mafreebox.freebox.fr/";
+		const candidate = configured.replace(/^https?:\/\//i, "").split(/[/?#]/, 1)[0].trim();
+		const parts = candidate.split(".");
+		const validIpv4 = parts.length === 4 && parts.every((part) => /^\d{1,3}$/.test(part) && Number(part) >= 0 && Number(part) <= 255);
+		return validIpv4 ? `http://${candidate}/` : "http://mafreebox.freebox.fr/";
+	}
+
 	_systemInfoSection(e, info) {
 		const wanState = e.wanStatus ? this._hass.states[e.wanStatus]?.state : undefined;
 		const normalizedWanState = String(wanState || "").trim().toLowerCase();
@@ -1219,6 +1236,7 @@ class FreeboxCard extends HTMLElement {
 			return "";
 
 		const systemActions = `<span class="system-actions">
+			${this._config.show_admin_console_button !== false ? `<a class="system-action admin-console-action" href="${this._escape(this._getAdminConsoleUrl())}" target="_blank" rel="noopener noreferrer" title="${this._t("admin_console")}" aria-label="${this._t("admin_console")}"><ha-icon icon="mdi:monitor-dashboard"></ha-icon></a>` : ""}
 			${this._config.show_wifi_button !== false && e.wifi ? `<button type="button" class="system-action wifi ${this._hass.states[e.wifi]?.state === "on" ? "active" : ""}" data-action="wifi" data-entity="${this._escape(e.wifi)}" title="${this._t("wifi")}" aria-label="${this._t("wifi")}"><ha-icon icon="${this._hass.states[e.wifi]?.state === "on" ? "mdi:wifi" : "mdi:wifi-off"}"></ha-icon></button>` : ""}
 			${this._config.show_reboot_button !== false && e.reboot ? `<button type="button" class="system-action reboot-action" data-action="reboot" data-entity="${this._escape(e.reboot)}" title="${this._t("reboot")}" aria-label="${this._t("reboot")}"><ha-icon icon="mdi:restart"></ha-icon></button>` : ""}
 		</span>`;
@@ -1537,6 +1555,7 @@ class FreeboxCard extends HTMLElement {
 			.system-title { justify-content:space-between; }
 			.system-title > span { display:flex; align-items:center; gap:8px; }
 			.system-actions { display:flex; align-items:center; gap:6px; margin-left:auto; }
+			.system-action.admin-console-action { margin-right:6px; color:var(--freebox-accent); text-decoration:none; }
 			.system-action { display:flex; align-items:center; justify-content:center; width:28px; height:28px; padding:0; border:1px solid var(--divider-color); border-radius:9px; color:#8a8a8a; background:rgba(128,128,128,.08); }
 			.system-action ha-icon { --mdc-icon-size:17px; }
 			.system-action.wifi.active { color:#00b8e6; border-color:#00b8e6; background:rgba(0,184,230,.12); }
@@ -1769,6 +1788,7 @@ class FreeboxCardEditor extends HTMLElement {
 		"show_card_background",
 		"show_wifi_button",
 		"show_reboot_button",
+		"show_admin_console_button",
 		"show_bandwidth_history",
 		"show_live_metrics",
 		"show_history_maximums",
@@ -1890,7 +1910,7 @@ class FreeboxCardEditor extends HTMLElement {
 					</div>
 				</div>`
 				: key === "system"
-					? `<div class="section-suboptions">${this._switchRow("show_wifi_button", this._et("show_wifi_button"))}${this._switchRow("show_reboot_button", this._et("show_reboot_button"))}</div>`
+					? `<div class="section-suboptions">${this._switchRow("show_admin_console_button", this._et("show_admin_console_button"))}<label>${this._et("admin_console_ip")}<input data-config="admin_console_ip" type="text" inputmode="decimal" autocomplete="off" placeholder="mafreebox.freebox.fr"></label>${this._switchRow("show_wifi_button", this._et("show_wifi_button"))}${this._switchRow("show_reboot_button", this._et("show_reboot_button"))}</div>`
 				: key === "hardware"
 					? `<div class="section-suboptions"><div class="option-group-content">${this._switchRow("show_storage_raid", this._et("show_storage_raid"))}${this._switchRow("show_fans", this._et("show_fans"))}${this._switchRow("show_temperatures", this._et("show_temperatures"))}</div></div>`
 					: key === "devices"
@@ -2147,8 +2167,6 @@ class FreeboxCardEditor extends HTMLElement {
 				const rect = item.getBoundingClientRect();
 				const after = event.clientY > rect.top + rect.height / 2;
 				order.splice(targetIndex + (after ? 1 : 0), 0, sourceKey);
-
-				// Preserve General / Card layout open state across the editor re-render.
 				const openSections = this._getEditorOpenSections();
 				this._config = { ...this._config, section_order: order };
 				this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: { ...this._config } }, bubbles: true, composed: true }));
