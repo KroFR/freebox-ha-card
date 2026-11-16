@@ -303,7 +303,7 @@ class FreeboxCard extends HTMLElement {
 		show_bandwidth_history: true,
 		show_live_metrics: true,
 		show_history_maximums: true,
-		history_hours: "8",
+		history_hours: "24",
 	};
 
 	static getConfigElement() {
@@ -861,7 +861,7 @@ class FreeboxCard extends HTMLElement {
 		if (!chart || !axis || !svg) return;
 		const start = Number(chart.dataset.historyStart);
 		const end = Number(chart.dataset.historyEnd);
-		const hours = Number(axis.dataset.historyHours) || 8;
+		const hours = Number(axis.dataset.historyHours) || 24;
 		const formatter = new Intl.DateTimeFormat(this._getLanguage(), { hour: "2-digit", minute: "2-digit", hour12: false });
 		const renderAxis = () => {
 			const width = axis.getBoundingClientRect().width;
@@ -1055,7 +1055,7 @@ class FreeboxCard extends HTMLElement {
 			console.warn("[freebox-card][history] No valid bandwidth entities", { downloadEntity, uploadEntity });
 			return;
 		}
-		const hours = Math.min(Math.max(Number.parseInt(this._config.history_hours, 10) || 8, 1), 168);
+		const hours = Math.min(Math.max(Number.parseInt(this._config.history_hours, 10) || 24, 1), 168);
 		const key = `${entityIds.join("|")}|${hours}`;
 		const fresh = this._bandwidthHistory.key === key && Date.now() - this._bandwidthHistory.loadedAt < 300000;
 		if (fresh || this._bandwidthHistory.loading) return;
@@ -1133,7 +1133,7 @@ class FreeboxCard extends HTMLElement {
 
 	_bandwidthHistoryChart(downloadEntity, uploadEntity) {
 		if (!this._config.show_bandwidth_history) return "";
-		const hours = Math.min(Math.max(Number.parseInt(this._config.history_hours, 10) || 8, 1), 168);
+		const hours = Math.min(Math.max(Number.parseInt(this._config.history_hours, 10) || 24, 1), 168);
 		const end = Date.now();
 		const start = end - hours * 3600000;
 		const download = this._bandwidthHistory.series[downloadEntity] || [];
@@ -1904,7 +1904,7 @@ class FreeboxCardEditor extends HTMLElement {
 					<div class="option-group">
 						<div class="option-group-title"><ha-icon icon="mdi:chart-line"></ha-icon><span>${this._et("history_settings")}</span></div>
 						<div class="option-group-content history-options">
-							<div class="history-primary">${this._switchRow("show_bandwidth_history", this._et("show_bandwidth_history"))}<label>${this._et("history_hours")}<input data-config="history_hours" type="number" min="1" max="168" step="1" placeholder="8"></label></div>
+							<div class="history-primary">${this._switchRow("show_bandwidth_history", this._et("show_bandwidth_history"))}<label>${this._et("history_hours")}<input data-config="history_hours" type="number" min="1" max="168" step="1" placeholder="24"></label></div>
 							<div class="history-secondary">${this._switchRow("show_history_maximums", this._et("show_history_maximums"))}</div>
 						</div>
 					</div>
