@@ -1089,16 +1089,16 @@ class FreeboxCard extends HTMLElement {
 
 		const buckets = new Map();
 		for (const point of visible) {
-			const bucketIndex = Math.floor((point.timestamp - start) / duration);
-			const bucket = buckets.get(bucketIndex) || { sum: 0, count: 0 };
+			const bucketStart = Math.floor(point.timestamp / duration) * duration;
+			const bucket = buckets.get(bucketStart) || { sum: 0, count: 0 };
 			bucket.sum += point.value;
 			bucket.count += 1;
-			buckets.set(bucketIndex, bucket);
+			buckets.set(bucketStart, bucket);
 		}
 		return [...buckets.entries()]
 			.sort(([a], [b]) => a - b)
-			.map(([bucketIndex, bucket]) => ({
-				timestamp: Math.min(start + bucketIndex * duration + duration / 2, end),
+			.map(([bucketStart, bucket]) => ({
+				timestamp: Math.min(bucketStart + duration / 2, end),
 				value: bucket.sum / bucket.count,
 			}));
 	}
