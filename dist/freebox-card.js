@@ -572,11 +572,10 @@ class FreeboxCard extends HTMLElement {
 		const hour12 = this._getHour12Preference();
 		const options = { hour: "2-digit", minute: "2-digit", ...(hour12 === undefined ? {} : { hour12 }) };
 		let formatted = new Intl.DateTimeFormat(this._getLocaleTag(), options).format(value);
-		if (hour12 === true) {
-			formatted = context === "axis"
-				? formatted.replace(/\b(AM|PM)\b/gi, (period) => period.toLowerCase())
-				: formatted.replace(/\b(am|pm)\b/gi, (period) => period.toUpperCase());
-		}
+
+		formatted = context === "axis"
+			? formatted.replace(/(AM|PM)/gi, (period) => period.toLowerCase())
+			: formatted.replace(/(am|pm)/gi, (period) => period.toUpperCase());
 		return formatted;
 	}
 	_formatGraphDate(value) {
@@ -1082,6 +1081,68 @@ class FreeboxCard extends HTMLElement {
 		this._initializeNetworkQualityChart();
 	}
 
+	_renderAdaptiveTimeAxis(axis, start, end, hours) {
+		const width = axis?.getBoundingClientRect().width || 0;
+		if (!width || !Number.isFinite(start) || !Number.isFinite(end)) return;
+		const sample = document.createElement("span");
+		sample.className = "history-x-measure";
+		sample.textContent = this._formatGraphTime(new Date(end), "axis");
+		axis.replaceChildren(sample);
+		const labelWidth = Math.ceil(sample.getBoundingClientRect().width || 52);
+		const minimumSpacing = labelWidth + 18;
+		const targetLabels = Math.max(2, Math.min(10, Math.floor(width / Math.max(minimumSpacing, 1))));
+		const idealStep = hours / Math.max(1, targetLabels - 1);
+		const allowedSteps = [1, 2, 3, 4, 6, 8, 12, 24, 48, 72, 96, 168];
+		const candidateSteps = allowedSteps.filter((step) => step >= idealStep * .7).slice(0, 4);
+		const range = Math.max(end - start, 1);
+		const edgeTarget = Math.min(.08, (labelWidth / 2 + 3) / Math.max(width, 1));
+		const buildTicks = (stepHours, offsetHours) => {
+			const stepMs = stepHours * 3600000;
+			const offsetMs = offsetHours * 3600000;
+			let tick = Math.ceil((start - offsetMs) / stepMs) * stepMs + offsetMs;
+			const ticks = [];
+			for (; tick <= end; tick += stepMs) ticks.push(tick);
+			return ticks;
+		};
+		let best = null;
+		for (const step of candidateSteps.length ? candidateSteps : [allowedSteps.at(-1)]) {
+			const offsets = step <= 24 ? Array.from({ length: step }, (_, index) => index) : [0];
+			for (const offset of offsets) {
+				const ticks = buildTicks(step, offset);
+				if (ticks.length < 2) continue;
+				const firstRatio = (ticks[0] - start) / range;
+				const lastRatio = (end - ticks.at(-1)) / range;
+				const densityPenalty = Math.abs(ticks.length - targetLabels) * .8;
+				const edgePenalty = Math.abs(firstRatio - edgeTarget) * 12 + Math.abs(lastRatio - edgeTarget) * 8;
+				const spacingPx = (step * 3600000 / range) * width;
+				const overlapPenalty = spacingPx < minimumSpacing ? (minimumSpacing - spacingPx) * .25 : 0;
+				const score = densityPenalty + edgePenalty + overlapPenalty;
+				if (!best || score < best.score) best = { score, ticks };
+			}
+		}
+		const ticks = best?.ticks || [];
+		axis.innerHTML = ticks.map((timestamp) => {
+			const ratio = (timestamp - start) / range;
+			return `<span data-ratio="${ratio}"><i aria-hidden="true"></i>${this._escape(this._formatGraphTime(new Date(timestamp), "axis"))}</span>`;
+		}).join("");
+		const labels = [...axis.querySelectorAll("span[data-ratio]")];
+		let previousRight = -Infinity;
+		for (const label of labels) {
+			const ratio = Number(label.dataset.ratio);
+			const halfWidth = label.getBoundingClientRect().width / 2;
+			const idealX = Math.min(1, Math.max(0, ratio)) * width;
+			const safeX = Math.max(halfWidth, Math.min(width - halfWidth, idealX));
+			const left = safeX - halfWidth;
+			if (left < previousRight + 10) {
+				label.hidden = true;
+				continue;
+			}
+			label.style.left = `${safeX}px`;
+			label.style.setProperty("--tick-offset", `${idealX - safeX}px`);
+			previousRight = safeX + halfWidth;
+		}
+	}
+
 	_initializeBandwidthHistoryAxis() {
 		const chart = this.shadowRoot?.querySelector(".history-chart[data-history-start]");
 		const axis = chart?.querySelector(".history-x");
@@ -1090,24 +1151,8 @@ class FreeboxCard extends HTMLElement {
 		const start = Number(chart.dataset.historyStart);
 		const end = Number(chart.dataset.historyEnd);
 		const hours = Number(axis.dataset.historyHours) || 24;
-		const formatAxisTime = (timestamp) => this._formatGraphTime(new Date(timestamp), "axis");
 		const renderAxis = () => {
-			const width = axis.getBoundingClientRect().width;
-			if (!width || !Number.isFinite(start) || !Number.isFinite(end)) return;
-			// Apex-like density: keep more time labels while preserving readability.
-			// Around 50-55 px per label gives 7-9 ticks on a normal card and 5-6 on mobile.
-			const targetLabels = Math.max(4, Math.min(10, Math.floor(width / 52)));
-			const idealStep = hours / Math.max(1, targetLabels - 1);
-			const allowedSteps = [1, 2, 3, 4, 6, 8, 12, 24, 48];
-			const hourStep = allowedSteps.find((step) => step >= idealStep) || 48;
-			let tick = Math.ceil(start / 3600000) * 3600000;
-			while (new Date(tick).getHours() % Math.min(hourStep, 24) !== 0) tick += 3600000;
-			const ticks = [];
-			for (; tick <= end; tick += hourStep * 3600000) ticks.push(tick);
-			axis.innerHTML = ticks.map((timestamp) => {
-				const ratio = (timestamp - start) / Math.max(end - start, 1);
-				return `<span style="left:${ratio * 100}%"><i aria-hidden="true"></i>${this._escape(formatAxisTime(timestamp))}</span>`;
-			}).join("");
+			this._renderAdaptiveTimeAxis(axis, start, end, hours);
 			// Keep the plot background horizontal-only, like ApexCharts in this card.
 			svg.querySelectorAll(".history-hour-grid").forEach((line) => line.remove());
 		};
@@ -1178,18 +1223,7 @@ class FreeboxCard extends HTMLElement {
 		const start = Number(chart.dataset.historyStart), end = Number(chart.dataset.historyEnd);
 		const latencyMaximum = Number(chart.dataset.latencyMax), lossMaximum = Number(chart.dataset.lossMax);
 		const hours = Number(axis?.dataset.historyHours) || 24;
-		const formatAxisTime = (timestamp) => this._formatGraphTime(new Date(timestamp), "axis");
-		const renderAxis = () => {
-			const width = axis?.getBoundingClientRect().width || 0;
-			if (!width) return;
-			const target = Math.max(4, Math.min(10, Math.floor(width / 52)));
-			const ideal = hours / Math.max(1, target - 1);
-			const step = [1,2,3,4,6,8,12,24,48].find((value) => value >= ideal) || 48;
-			let tick = Math.ceil(start / 3600000) * 3600000;
-			while (new Date(tick).getHours() % Math.min(step,24) !== 0) tick += 3600000;
-			const ticks=[]; for (; tick<=end; tick += step*3600000) ticks.push(tick);
-			axis.innerHTML = ticks.map((timestamp) => `<span style="left:${(timestamp-start)/Math.max(end-start,1)*100}%"><i></i>${this._escape(formatAxisTime(timestamp))}</span>`).join("");
-		};
+		const renderAxis = () => this._renderAdaptiveTimeAxis(axis, start, end, hours);
 		renderAxis();
 		if (typeof ResizeObserver !== "undefined") { this._networkAxisObserver?.disconnect(); this._networkAxisObserver = new ResizeObserver(renderAxis); this._networkAxisObserver.observe(axis); }
 		if (!overlay || !tooltip || !cursor) return;
@@ -1405,6 +1439,15 @@ class FreeboxCard extends HTMLElement {
 			}));
 	}
 
+	_formatHistoryMaximum(value) {
+		const numeric = Number(value);
+		if (!Number.isFinite(numeric)) return "";
+		return new Intl.NumberFormat(this._getLanguage(), {
+			minimumFractionDigits: 0,
+			maximumFractionDigits: Number.isInteger(numeric) ? 0 : 1,
+		}).format(numeric);
+	}
+
 	_historyScale(points) {
 		const peak = points.reduce((maximum, point) =>
 			Number.isFinite(point.value) ? Math.max(maximum, point.value) : maximum, 0);
@@ -1451,7 +1494,6 @@ class FreeboxCard extends HTMLElement {
 		this._historyHoverData = { download: groupedDownload, upload: groupedUpload };
 		const downloadMax = groupedDownload.reduce((maximum, point) => Math.max(maximum, point.value), 0);
 		const uploadMax = groupedUpload.reduce((maximum, point) => Math.max(maximum, point.value), 0);
-		const valueFormatter = new Intl.NumberFormat(this._getLanguage(), { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 		const scale = this._historyScale(visiblePoints);
 		const roundedMaximum = scale.maximum;
 		const downloadPath = this._historyPath(groupedDownload, start, end, roundedMaximum, width, height);
@@ -1463,7 +1505,7 @@ class FreeboxCard extends HTMLElement {
 			const point = series.reduce((best, item) => item.value > best.value ? item : best, series[0]);
 			const x = ((point.timestamp - start) / Math.max(end - start, 1)) * width;
 			const y = height - Math.min(Math.max(point.value / roundedMaximum, 0), 1) * height;
-			const label = valueFormatter.format(maximumValue);
+			const label = this._formatHistoryMaximum(maximumValue);
 			const labelWidth = Math.max(40, label.length * 7.2 + 16);
 			const labelX = Math.min(Math.max(x, labelWidth / 2 + 2), width - labelWidth / 2 - 2);
 			const labelBottom = y - 10;
@@ -1519,12 +1561,11 @@ class FreeboxCard extends HTMLElement {
 		const grid = ticks.map((ratio) => `<line class="history-horizontal-grid" x1="0" y1="${(height * ratio).toFixed(1)}" x2="${width}" y2="${(height * ratio).toFixed(1)}"></line>`).join("");
 		const leftLabels = [...ticks].reverse().map((ratio) => `<span style="top:${(1-ratio)*100}%">${Math.round(latencyMax*ratio)}</span>`).join("");
 		const rightLabels = [...ticks].reverse().map((ratio) => `<span style="top:${(1-ratio)*100}%">${Math.round(lossMax*ratio)}</span>`).join("");
-		const formatter = new Intl.NumberFormat(this._getLanguage(), { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 		const marker = (series, maximum, cssClass, scaleMaximum, unit) => {
 			if (!series.length || maximum <= 0 || this._config.show_history_maximums === false) return "";
 			const point = series.reduce((best, item) => item.value > best.value ? item : best, series[0]);
 			const px = x(point.timestamp), py = height - Math.min(Math.max(point.value / scaleMaximum, 0), 1) * height;
-			const label = `${formatter.format(maximum)}${unit}`;
+			const label = `${this._formatHistoryMaximum(maximum)}${unit}`;
 			const labelWidth = Math.max(44, label.length * 7 + 14), labelX = Math.min(Math.max(px, labelWidth/2+2), width-labelWidth/2-2);
 			const labelBottom = py - 9, labelHeight = 19, labelTop = labelBottom - labelHeight;
 			return `<g class="quality-max-marker ${cssClass}"><line x1="${px.toFixed(1)}" y1="${labelBottom.toFixed(1)}" x2="${px.toFixed(1)}" y2="${(py-3).toFixed(1)}"></line><rect x="${(labelX-labelWidth/2).toFixed(1)}" y="${labelTop.toFixed(1)}" width="${labelWidth.toFixed(1)}" height="${labelHeight}" rx="4"></rect><text x="${labelX.toFixed(1)}" y="${(labelTop+14).toFixed(1)}" text-anchor="middle">${this._escape(label)}</text><circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="2.5"></circle></g>`;
@@ -1982,9 +2023,9 @@ class FreeboxCard extends HTMLElement {
 			.history-y span { position:absolute; right:5px; line-height:1; transform:translateY(-50%); white-space:nowrap; }
 			.history-x { position:relative; grid-column:2; height:22px; overflow:visible; color:var(--primary-text-color); font-size:12px; font-weight:400; font-family: Helvetica, Arial, sans-serif; }
 			.history-x span { position:absolute; top:7px; transform:translateX(-50%); white-space:nowrap; }
-			.history-x span i { position:absolute; left:50%; top:-7px; width:1px; height:4px; background:currentColor; opacity:.85; transform:translateX(-50%); }
-			.history-x span:first-child { transform:none; }
-			.history-x span:last-child { transform:translateX(-100%); }
+			.history-x span i { position:absolute; left:calc(50% + var(--tick-offset, 0px)); top:-7px; width:1px; height:4px; background:currentColor; opacity:.85; transform:translateX(-50%); }
+			.history-x span[hidden] { display:none; }
+			.history-x-measure { visibility:hidden; left:0 !important; transform:none !important; }
 			@media (max-width:520px) { .history-x { font-size:11px; } .history-chart { grid-template-columns:23px minmax(0,1fr); } .history-hover-overlay { left:23px; } .history-unit { left:-8px; font-size:10px; } .history-y span { right:5px; } }
 			.history-empty { display:grid; place-items:center; box-sizing:border-box; min-height:173px; margin-top:14px; color:var(--secondary-text-color); font-size:11px; }
 			.network-quality-history { margin-top:14px; padding-top:12px; border-top:1px solid var(--divider-color); }
