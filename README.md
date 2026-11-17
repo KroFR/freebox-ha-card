@@ -103,8 +103,9 @@ La carte essaie de sélectionner automatiquement la Freebox en recherchant une e
 | `upload_bandwidth` | nombre | non | — | Débit montant maximal en Mbit/s, utilisé pour calculer le pourcentage de la jauge |
 | `show_live_metrics` | booléen | non | `true` | Afficher les mesures de bande passante en temps réel |
 | `show_bandwidth_history` | booléen | non | `true` | Afficher le graphique d’historique de la bande passante |
+| `show_network_quality_history` | booléen | non | `true` | Afficher le graphique d’historique de la latence et de la perte de paquets |
 | `show_history_maximums` | booléen | non | `true` | Afficher les valeurs maximales sur le graphique |
-| `history_hours` | nombre | non | `8` | Nombre d’heures affichées dans l’historique de la bande passante, de 1 à 168 |
+| `history_hours` | nombre | non | `24` | Nombre d’heures affichées dans les graphiques d’historique, de 1 à 168 |
 | `section_order` | liste | non | voir ci-dessous | Ordre d’affichage des sections |
 | `show_internet` | booléen | non | `true` | Afficher les informations de bande passante |
 | `show_system` | booléen | non | `true` | Afficher les informations système et les actions |
@@ -129,20 +130,20 @@ section_order:
   - debug
 ```
 
-## 📈 Historique de la bande passante
+## 📈 Graphiques d’historique
 
-La section **Bande passante** inclut un graphique affichant l’historique des débits descendant et montant.
+La section **Bande passante** inclut deux graphiques : l’historique des débits descendant et montant, ainsi que l’historique de la latence et de la perte de paquets.
 
-Le graphique :
+Les graphiques :
 
-- Utilise les données historiques Home Assistant des capteurs de débit descendant et montant détectés pour la Freebox
-- Affiche les 24 dernières heures par défaut
-- Permet de configurer une période de 1 à 168 heures
-- Regroupe les données par périodes de 5 minutes et affiche la moyenne de chaque période
-- Utilise des axes responsives et une échelle adaptative pour rester lisible sur ordinateur et mobile
-- Affiche les valeurs Download et Upload au survol
-- Peut afficher ou masquer les valeurs maximales directement sur le graphique
-- Peut être masqué indépendamment de la section **Bande passante**
+- Utilisent les données historiques Home Assistant des capteurs de débit descendant, montant, latence et perte de paquets disponibles
+- Affichent les 24 dernières heures par défaut
+- Permettent de configurer une période de 1 à 168 heures
+- Regroupent les données par périodes de 5 minutes et affichent la moyenne de chaque période
+- Utilisent des axes responsives et une échelle adaptative pour rester lisible sur ordinateur et mobile
+- Affichent les valeurs Download et Upload, ou Latence et Perte de paquets, au survol
+- Peuvent afficher ou masquer les valeurs maximales directement sur les graphiques
+- Peuvent être masqués indépendamment de la section **Bande passante**
 
 Les paramètres de l’historique sont disponibles dans **Disposition de la carte > Bande passante** dans le configurateur visuel.
 
