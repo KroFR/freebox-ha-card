@@ -63,15 +63,22 @@ Some sections appear only when the required entities are available. Hardware and
 
 ## 📦 Installation
 
-### HACS (Recommended)
+### Marketplace (HA 2026.11 and newer)
 
-1. Open HACS in Home Assistant.
-2. Click on the three dots in the top right corner.
-3. Select Custom repositories.
-4. Add this repository URL: https://github.com/KroFR/freebox-ha-card
-5. Select Dashboard as the category.
-6. Click Add.
-7. Search for Freebox Card and install it.
+[![Open your Home Assistant instance and open the Marketplace.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=KroFR&repository=freebox-ha-card)
+
+or
+
+1. Open the Marketplace → search for **Freebox Card**
+2. Click it → install
+3. The Marketplace installs the plugin into www/community/freebox-ha-card/ and adds it as a dashboard resource
+
+### HACS (HA before 2026.11)
+
+1. Install HACS if you don't have it already
+2. Open HACS in Home Assistant
+3. Search for **Freebox Card**
+4. Click the download button
 
 ### Manual
 
