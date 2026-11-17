@@ -888,7 +888,12 @@ class FreeboxCard extends HTMLElement {
 			upload: this._find("sensor", ["upload", "envoi", "vitesse_d_envoi"]),
 			latency: this._config?.latency_entity && this._hass.states[this._config.latency_entity] ? this._config.latency_entity : this._findPingLatency(),
 			packetLoss: this._findPacketLoss(),
-			uptime: this._getIntegrationEntityIds().find((id) => id === "sensor.freebox_uptime" || /uptime|temps_de_fonctionnement/i.test(id)),
+			uptime: this._getIntegrationEntityIds().find((id) => {
+				if (!id.startsWith("sensor.")) return false;
+				const attributes = this._hass.states[id]?.attributes || {};
+				return attributes.device_class === "duration"
+					&& String(attributes.unit_of_measurement || "").trim().toLowerCase() === "s";
+			}) || this._getIntegrationEntityIds().find((id) => id === "sensor.freebox_uptime" || /uptime|temps_de_fonctionnement/i.test(id)),
 			hardwareTemperatures: this._getIntegrationEntityIds().filter((id) => {
 				if (!id.startsWith("sensor."))
 					return false;
