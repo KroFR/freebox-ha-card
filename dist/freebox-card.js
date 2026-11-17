@@ -78,6 +78,8 @@ const TRANSLATIONS = {
 			language: "Language",
 			auto: "Auto",
 			debug: "DEBUG",
+			expand_section: "Expand section",
+			collapse_section: "Collapse section",
 		},
 		editor: {
 			device_id: "Freebox device",
@@ -188,6 +190,8 @@ const TRANSLATIONS = {
 			unavailable: "Indisponible",
 			language: "Langue",
 			debug: "DEBUG",
+			expand_section: "Déplier la section",
+			collapse_section: "Replier la section",
 		},
 		editor: {
 			device_id: "Appareil Freebox",
@@ -335,6 +339,11 @@ class FreeboxCard extends HTMLElement {
 		this._bandwidthHistory = { key: "", loadedAt: 0, loading: false, series: {} };
 		this._networkQualityHistory = { key: "", loadedAt: 0, loading: false, series: {} };
 		this._lastRenderSignature = "";
+		this._collapsedSections = {};
+		this._collapsedSectionsStorageKey = "";
+		this._collapsedSectionsLoaded = false;
+		this._collapsedSectionsLoading = false;
+		this._unsubscribeCollapsedSections = null;
 	}
 
 	setConfig(config) {
@@ -358,6 +367,7 @@ class FreeboxCard extends HTMLElement {
 	set hass(hass) {
 		this._hass = hass;
 		this._loadRegistries();
+		this._ensureCollapsedSectionsStorage();
 		const signature = this._getRenderSignature(hass);
 		if (signature === this._lastRenderSignature) return;
 		this._lastRenderSignature = signature;
@@ -381,6 +391,126 @@ class FreeboxCard extends HTMLElement {
 			language: resolveLanguage(hass, this._config.language || "auto"),
 			darkMode: Boolean(hass.themes?.darkMode),
 			states,
+		});
+	}
+
+	disconnectedCallback() {
+		if (typeof this._unsubscribeCollapsedSections === "function") this._unsubscribeCollapsedSections();
+		this._unsubscribeCollapsedSections = null;
+		this._historyAxisObserver?.disconnect();
+		this._networkAxisObserver?.disconnect();
+	}
+
+	_getCardPositionIdentity() {
+		let viewPath = "unknown-view";
+		try {
+			const pathname = window.location?.pathname || "";
+			const parts = pathname.split("/").filter(Boolean);
+			viewPath = parts.slice(0, 2).join("/") || pathname || "unknown-view";
+		} catch (_error) {}
+
+		let indexPath = [];
+		let node = this;
+		while (node) {
+			const root = node.getRootNode?.();
+			const parent = node.parentElement || (root instanceof ShadowRoot ? root.host?.parentElement : null);
+			if (!parent) break;
+			const siblings = [...parent.children].filter((child) => {
+				const tag = String(child.tagName || "").toLowerCase();
+				return tag.includes("card") || tag.includes("hui-") || child === node;
+			});
+			const index = siblings.indexOf(node);
+			if (index >= 0) indexPath.unshift(index);
+			node = parent;
+			const tag = String(node.tagName || "").toLowerCase();
+			if (tag === "hui-view" || tag === "hui-panel-view" || tag === "hui-masonry-view" || tag === "hui-sections-view") break;
+		}
+		return `${viewPath}:${indexPath.length ? indexPath.join(".") : "0"}`;
+	}
+
+	_getCollapsedSectionsStorageKey() {
+		const deviceId = this._getSelectedDeviceId() || "auto";
+		return `freebox-card:collapsed-sections:${deviceId}:${this._getCardPositionIdentity()}`;
+	}
+
+	_normalizeCollapsedSections(value) {
+		const source = value && typeof value === "object" ? value : {};
+		const allowed = new Set(["internet", "system", "hardware", "telephony", "devices", "debug"]);
+		return Object.fromEntries(Object.entries(source).filter(([key, collapsed]) => allowed.has(key) && typeof collapsed === "boolean"));
+	}
+
+	async _ensureCollapsedSectionsStorage() {
+		if (!this._hass?.connection || !this._config || this._collapsedSectionsLoading) return;
+		const key = this._getCollapsedSectionsStorageKey();
+		if (key === this._collapsedSectionsStorageKey && this._collapsedSectionsLoaded) return;
+		this._collapsedSectionsLoading = true;
+		if (typeof this._unsubscribeCollapsedSections === "function") this._unsubscribeCollapsedSections();
+		this._unsubscribeCollapsedSections = null;
+		this._collapsedSectionsStorageKey = key;
+		try {
+			const response = await this._hass.connection.sendMessagePromise({ type: "frontend/get_user_data", key });
+			this._collapsedSections = this._normalizeCollapsedSections(response?.value ?? response);
+			this._collapsedSectionsLoaded = true;
+			this._render();
+			this._unsubscribeCollapsedSections = await this._hass.connection.subscribeMessage((message) => {
+				const next = this._normalizeCollapsedSections(message?.value ?? message);
+				if (JSON.stringify(next) === JSON.stringify(this._collapsedSections)) return;
+				this._collapsedSections = next;
+				this._render();
+			}, { type: "frontend/subscribe_user_data", key });
+		} catch (error) {
+			console.warn("[freebox-card] Unable to load collapsible section preferences", error);
+			this._collapsedSectionsLoaded = true;
+		} finally {
+			this._collapsedSectionsLoading = false;
+		}
+	}
+	async _saveCollapsedSections() {
+		if (!this._hass?.connection || !this._collapsedSectionsStorageKey) return;
+		try {
+			await this._hass.connection.sendMessagePromise({ type: "frontend/set_user_data", key: this._collapsedSectionsStorageKey, value: this._collapsedSections });
+		} catch (error) {
+			console.warn("[freebox-card] Unable to save collapsible section preferences", error);
+		}
+	}
+
+	_initializeCollapsibleSections() {
+		this.shadowRoot.querySelectorAll("section.panel[data-section-key]").forEach((section) => {
+			const key = section.dataset.sectionKey;
+			const title = section.querySelector(":scope > .section-title");
+			if (!title || !key) return;
+			const body = document.createElement("div");
+			body.className = "section-collapse-body";
+			while (title.nextSibling) body.appendChild(title.nextSibling);
+			section.appendChild(body);
+			const chevron = document.createElement("ha-icon");
+			chevron.className = "section-collapse-chevron";
+			chevron.setAttribute("icon", "mdi:chevron-down");
+			title.appendChild(chevron);
+			const applyState = () => {
+				const collapsed = this._collapsedSections[key] === true;
+				section.classList.toggle("section-collapsed", collapsed);
+				title.setAttribute("aria-expanded", String(!collapsed));
+				title.setAttribute("aria-label", this._t(collapsed ? "expand_section" : "collapse_section"));
+			};
+			applyState();
+			title.setAttribute("role", "button");
+			title.setAttribute("tabindex", "0");
+			const toggle = () => {
+				this._collapsedSections = { ...this._collapsedSections, [key]: !(this._collapsedSections[key] === true) };
+				applyState();
+				this._saveCollapsedSections();
+			};
+			title.addEventListener("click", (event) => {
+				if (event.target.closest("button, a, [data-action], [data-more-info]")) return;
+				toggle();
+			});
+			title.addEventListener("keydown", (event) => {
+				if (event.key !== "Enter" && event.key !== " ") return;
+				if (event.target.closest("button, a, [data-action], [data-more-info]")) return;
+				event.preventDefault();
+				toggle();
+			});
 		});
 	}
 
@@ -876,6 +1006,7 @@ class FreeboxCard extends HTMLElement {
 				this._trackerListsOpen[element.dataset.trackerList] = element.open;
 			});
 		});
+		this._initializeCollapsibleSections();
 		this._initializeBandwidthHistoryTooltip();
 		this._initializeBandwidthHistoryAxis();
 		this._initializeNetworkQualityChart();
@@ -1356,7 +1487,7 @@ class FreeboxCard extends HTMLElement {
 		const qualityHistoryChart = this._networkQualityHistoryChart(e.latency, e.packetLoss);
 		setTimeout(() => this._loadBandwidthHistory(e.download, e.upload), 0);
 		setTimeout(() => this._loadNetworkQualityHistory(e.latency, e.packetLoss), 0);
-		return `<section class="panel internet-panel">
+		return `<section class="panel internet-panel" data-section-key="internet">
 			<div class="section-title"><ha-icon icon="mdi:speedometer"></ha-icon>${this._t("internet")}</div>
 			${liveMetrics}
 			${historyChart}
@@ -1399,7 +1530,7 @@ class FreeboxCard extends HTMLElement {
 			${this._config.show_wifi_button !== false && e.wifi ? `<button type="button" class="system-action wifi ${this._hass.states[e.wifi]?.state === "on" ? "active" : ""}" data-action="wifi" data-entity="${this._escape(e.wifi)}" title="${this._t("wifi")}" aria-label="${this._t("wifi")}"><ha-icon icon="${this._hass.states[e.wifi]?.state === "on" ? "mdi:wifi" : "mdi:wifi-off"}"></ha-icon></button>` : ""}
 			${this._config.show_reboot_button !== false && e.reboot ? `<button type="button" class="system-action reboot-action" data-action="reboot" data-entity="${this._escape(e.reboot)}" title="${this._t("reboot")}" aria-label="${this._t("reboot")}"><ha-icon icon="mdi:restart"></ha-icon></button>` : ""}
 		</span>`;
-		return `<section class="panel detail-panel system-info-panel">
+		return `<section class="panel detail-panel system-info-panel" data-section-key="system">
 			<div class="section-title system-title"><span><ha-icon icon="mdi:server"></ha-icon>${this._t("system")}</span>${systemActions}</div>
 			${details.map(([icon, key, value, tone]) => this._detail(icon, this._t(key), String(value), tone)).join("")}
 		</section>`;
@@ -1421,7 +1552,7 @@ class FreeboxCard extends HTMLElement {
 		const raid = sortEntities((e.hardwareRaid || []).filter(isAvailable));
 		if (!temperatures.length && !fans.length && !storage.length && !raid.length) return "";
 
-		return `<section class="panel detail-panel hardware-panel">
+		return `<section class="panel detail-panel hardware-panel" data-section-key="hardware">
 			<div class="section-title"><ha-icon icon="mdi:memory"></ha-icon>${this._t("hardware")}</div>
 			${this._config.show_storage_raid !== false && (storage.length || raid.length) ? this._hardwareGroup(this._t("disks"), "mdi:harddisk", [...storage.map((id) => this._hardwareTile(id, "storage")), ...raid.map((id) => this._hardwareTile(id, "raid"))].join("")) : ""}
 			${this._config.show_fans !== false && fans.length ? this._hardwareGroup(this._t("fans"), "mdi:fan", fans.map((id) => this._hardwareTile(id, "fan")).join("")) : ""}
@@ -1482,7 +1613,7 @@ class FreeboxCard extends HTMLElement {
 		const resetButton = e.missedCallsReset
 			? `<button type="button" class="reset-calls" data-action="reset_calls" data-entity="${this._escape(e.missedCallsReset)}" title="${resetLabel}" aria-label="${resetLabel}"${hasCalls ? "" : " disabled"}><ha-icon icon="mdi:phone-check"></ha-icon>${resetLabel}</button>`
 			: "";
-		return `<section class="panel detail-panel telephony-panel">
+		return `<section class="panel detail-panel telephony-panel" data-section-key="telephony">
 			<div class="section-title"><ha-icon icon="mdi:phone"></ha-icon>${this._t("telephony")}</div>
 			<div class="telephony-row${resetButton ? "" : " no-reset"}">
 				<button type="button" class="call-metric${hasCalls ? " has-calls" : ""}" data-more-info="${this._escape(e.missedCalls)}"><ha-icon icon="mdi:phone-missed"></ha-icon><div><strong>${this._escape(value)}</strong><span>${this._t("missed_calls")}</span></div></button>
@@ -1507,7 +1638,7 @@ class FreeboxCard extends HTMLElement {
 		const awayList = this._config.show_disconnected_devices_list !== false
 			? renderList("away", "away_devices_list", awayNames, `${awayNames.length} / ${stats.home + stats.away}`, "away-devices-list")
 			: "";
-		return `<section class="panel detail-panel trackers-panel">
+		return `<section class="panel detail-panel trackers-panel" data-section-key="devices">
 			<div class="section-title"><ha-icon icon="mdi:devices"></ha-icon>${this._t("device_trackers")}</div>
 			${metrics.length ? `<div class="tracker-metrics">
 				${metrics.map(([icon, key, value, tone]) => `<div class="tracker-metric ${tone}"><ha-icon icon="${icon}"></ha-icon><div><strong>${value}</strong><span>${this._t(key)}</span></div></div>`).join("")}
@@ -1660,7 +1791,7 @@ class FreeboxCard extends HTMLElement {
 			return [...groups.entries()].map(([deviceName, attributes]) => `<div class="debug-device-attrs"><div class="debug-device-attrs-title"><code>device_attr</code><span>${this._escape(deviceName)}</span></div><div class="debug-attributes">${attributes.map(({ key, value }) => { const formatted = typeof value === "object" ? JSON.stringify(value) : String(value); return `<div class="debug-attribute"><code>${this._escape(key)}</code><span>${this._escape(formatted)}</span></div>`; }).join("")}</div></div>`).join("");
 		})() : "";
 		const trackerCounters = `<span class="tracker-count total" title="Total devices">${totalDevices}</span><span class="tracker-count enabled" title="Connected or disconnected devices">${enabledDevices}</span><span class="tracker-count disabled" title="Disabled devices">${disabledDevices}</span>`;
-		return `<section class="panel debug-panel">
+		return `<section class="panel debug-panel" data-section-key="debug">
 			<div class="section-title"><ha-icon icon="mdi:bug-outline"></ha-icon>${this._t("debug")}</div>
 			<div class="debug-list">
 				${renderGroup("configuration", "Configuration", "mdi:cog-outline", configurationEntities, "", true, deviceAttributeHtml)}
@@ -1725,6 +1856,14 @@ class FreeboxCard extends HTMLElement {
 			.internet-panel, .detail-panel { padding:15px; }
 			.section-title { display:flex; align-items:center; gap:8px; margin-bottom:13px; color:var(--secondary-text-color); font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
 			.section-title ha-icon { --mdc-icon-size:18px; color:var(--freebox-accent); }
+			.panel > .section-title { cursor:pointer; user-select:none; }
+			.section-collapse-chevron { flex:0 0 auto; margin-left:auto; --mdc-icon-size:20px !important; color:var(--secondary-text-color) !important; transition:transform .18s ease; }
+			.system-title .section-collapse-chevron { margin-left:6px; }
+			.section-collapse-body { display:block; }
+			.section-collapsed > .section-title { margin-bottom:0; }
+			.section-collapsed > .section-collapse-body { display:none; }
+			.section-collapsed > .section-title .section-collapse-chevron { transform:rotate(-90deg); }
+			.system-actions { position:relative; z-index:2; }
 			.subsection-title { margin-bottom:8px; color:var(--secondary-text-color); font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
 			.internet-metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
 			.internet-metrics.no-latency { grid-template-columns:repeat(2,minmax(0,1fr)); }
