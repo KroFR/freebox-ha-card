@@ -14,31 +14,31 @@ A responsive Lovelace card for [Home Assistant](https://www.home-assistant.io/) 
 
 | Light Theme | Dark Theme |
 |---|---|
-| <img width="501" height="371" alt="image" src="https://github.com/user-attachments/assets/0f3fe2d6-0260-4e42-985e-37a1d674be90" /> | <img width="504" height="371" alt="image" src="https://github.com/user-attachments/assets/79c008c1-7b57-4d0c-be75-4667f05d9e73" /> |
+| <img width="500" height="588" alt="image" src="https://github.com/user-attachments/assets/ee2056cf-e0e0-4fc9-9249-7b0012b5911d" /> | <img width="504" height="589" alt="image" src="https://github.com/user-attachments/assets/5e56d01c-eaf4-4629-a7e6-476943f252e8" /> |
 
 ### System
 
 | Light Theme | Dark Theme |
 |---|---|
-| <img width="501" height="531" alt="image" src="https://github.com/user-attachments/assets/7fe739ae-74b6-435e-ae77-7797c6c109d4" /> | <img width="502" height="533" alt="image" src="https://github.com/user-attachments/assets/5f03e81c-033f-45a9-bc79-c9aeb53bb0c9" /> |
+| <img width="501" height="531" alt="image" src="https://github.com/user-attachments/assets/ec7cc11a-c97d-4623-96c2-1f3d83b648f1" /> | <img width="504" height="534" alt="image" src="https://github.com/user-attachments/assets/b9037c6e-a59b-4b27-9570-53254df2d001" /> |
 
 ### Hardware
 
 | Light Theme | Dark Theme |
 |---|---|
-| <img width="458" height="515" alt="image" src="https://github.com/user-attachments/assets/3ab2a9ef-c3b1-4498-a4b8-0aa74aabf6fc" /> | <img width="461" height="520" alt="image" src="https://github.com/user-attachments/assets/8d6c819d-13b7-4dd5-9cca-d5f4d2a68f42" /> |
+| <img width="501" height="449" alt="image" src="https://github.com/user-attachments/assets/59d78f25-9feb-4089-a7cf-4cb7002a0499" /> | <img width="503" height="450" alt="image" src="https://github.com/user-attachments/assets/1bfb5f3c-b471-4e69-9459-e1d5c88674be" /> |
 
 ### Telephony
 
 | Light Theme | Dark Theme |
 |---|---|
-| <img width="458" height="118" alt="image" src="https://github.com/user-attachments/assets/30fdf5b1-715e-47b0-b340-36687e1e0429" /> | <img width="462" height="121" alt="image" src="https://github.com/user-attachments/assets/d42e9edf-b70a-4e4a-a1ba-adc262e5075d" /> |
+| <img width="501" height="122" alt="image" src="https://github.com/user-attachments/assets/41117449-5390-412f-9d4d-a661a343762a" /> | <img width="503" height="123" alt="image" src="https://github.com/user-attachments/assets/53c8b875-2704-439f-a561-9e4ab53ebccc" /> |
 
 ### Devices
 
 | Light Theme | Dark Theme |
 |---|---|
-| <img width="460" height="220" alt="image" src="https://github.com/user-attachments/assets/2456f03a-18bf-46c7-ab9c-dc545f21cb13" /> | <img width="459" height="220" alt="image" src="https://github.com/user-attachments/assets/1e0e7405-c92e-4f30-8486-14ec55bd1c15" /> |
+| <img width="501" height="221" alt="image" src="https://github.com/user-attachments/assets/1e5142ff-b99f-4f70-996d-937514d88f7d" /> | <img width="504" height="223" alt="image" src="https://github.com/user-attachments/assets/6648c416-73ff-4a6e-998c-247a3607853d" /> |
 
 ## ✨ Features
 
