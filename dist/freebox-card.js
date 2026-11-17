@@ -1978,14 +1978,14 @@ class FreeboxCard extends HTMLElement {
 			.history-max-marker .history-max-label { fill:#fff; font-size:12px; font-weight:400; dominant-baseline:auto; }
 			.history-max-marker.upload .history-max-label { fill:#000; }
 			.history-unit { position:absolute; left:-8px; top:0; z-index:1; display:flex; align-items:center; justify-content:center; width:11px; height:135px; color:var(--primary-text-color); font-size:11px; font-weight:700; line-height:1; letter-spacing:0; writing-mode:vertical-rl; transform:rotate(180deg); white-space:nowrap; }
-			.history-y { position:relative; height:135px; overflow:visible; color:var(--primary-text-color); font-size:10px; font-weight:700; text-align:right; }
+			.history-y { position:relative; height:135px; overflow:visible; color:var(--primary-text-color); font-size:10px; font-weight:400; text-align:right; font-family: Helvetica, Arial, sans-serif; }
 			.history-y span { position:absolute; right:5px; line-height:1; transform:translateY(-50%); white-space:nowrap; }
-			.history-x { position:relative; grid-column:2; height:22px; overflow:visible; color:var(--primary-text-color); font-size:10px; font-weight:700; }
+			.history-x { position:relative; grid-column:2; height:22px; overflow:visible; color:var(--primary-text-color); font-size:12px; font-weight:400; font-family: Helvetica, Arial, sans-serif; }
 			.history-x span { position:absolute; top:7px; transform:translateX(-50%); white-space:nowrap; }
 			.history-x span i { position:absolute; left:50%; top:-7px; width:1px; height:4px; background:currentColor; opacity:.85; transform:translateX(-50%); }
 			.history-x span:first-child { transform:none; }
 			.history-x span:last-child { transform:translateX(-100%); }
-			@media (max-width:520px) { .history-x { font-size:9px; } .history-chart { grid-template-columns:23px minmax(0,1fr); } .history-hover-overlay { left:23px; } .history-unit { left:-8px; font-size:10px; } .history-y span { right:5px; } }
+			@media (max-width:520px) { .history-x { font-size:11px; } .history-chart { grid-template-columns:23px minmax(0,1fr); } .history-hover-overlay { left:23px; } .history-unit { left:-8px; font-size:10px; } .history-y span { right:5px; } }
 			.history-empty { display:grid; place-items:center; box-sizing:border-box; min-height:173px; margin-top:14px; color:var(--secondary-text-color); font-size:11px; }
 			.network-quality-history { margin-top:14px; padding-top:12px; border-top:1px solid var(--divider-color); }
 			.quality-chart { position:relative; display:grid; grid-template-columns:0 24px minmax(0,1fr) 24px 11px; grid-template-rows:135px 24px; min-width:0; min-height:159px; margin-top:14px; }
