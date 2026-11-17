@@ -345,6 +345,8 @@ class FreeboxCard extends HTMLElement {
 		this._collapsedSectionsLoading = false;
 		this._unsubscribeCollapsedSections = null;
 		this._lastLocalePreferences = "";
+		this._sharedHistoryTicks = null;
+		this._sharedHistoryWindow = null;
 	}
 
 	setConfig(config) {
@@ -546,6 +548,7 @@ class FreeboxCard extends HTMLElement {
 		if (["24", "24_hour", "24_hours"].includes(value)) return false;
 		return undefined;
 	}
+
 	_getHaDateOrder() {
 		const raw = String(this._hass?.locale?.date_format || "").trim();
 		const compact = raw.toUpperCase().replace(/[^A-Z]/g, "");
@@ -555,6 +558,7 @@ class FreeboxCard extends HTMLElement {
 		if (["YMD", "YYYYMMDD", "YEARMONTHDAY", "YEARMONTHDAYLONG"].includes(compact)) return "YMD";
 		return "LOCALE";
 	}
+
 	_getDateSeparator(value = new Date()) {
 		const literal = new Intl.DateTimeFormat(this._getLocaleTag(), {
 			year: "numeric", month: "2-digit", day: "2-digit",
@@ -568,6 +572,7 @@ class FreeboxCard extends HTMLElement {
 		}).formatToParts(value);
 		return Object.fromEntries(parts.filter((part) => part.type !== "literal").map((part) => [part.type, part.value]));
 	}
+
 	_formatGraphTime(value, context = "axis") {
 		const hour12 = this._getHour12Preference();
 		const options = { hour: "2-digit", minute: "2-digit", ...(hour12 === undefined ? {} : { hour12 }) };
@@ -578,6 +583,7 @@ class FreeboxCard extends HTMLElement {
 			: formatted.replace(/(am|pm)/gi, (period) => period.toUpperCase());
 		return formatted;
 	}
+
 	_formatGraphDate(value) {
 		const order = this._getHaDateOrder();
 		if (order === "LOCALE") {
@@ -591,6 +597,14 @@ class FreeboxCard extends HTMLElement {
 		if (order === "MDY") return [month, day, year].join(separator);
 		return [year, month, day].join(separator);
 	}
+
+	_formatGraphAxisTick(value) {
+		if (value.getHours() === 0 && value.getMinutes() === 0) {
+			return new Intl.DateTimeFormat(this._getLocaleTag(), { day: "2-digit", month: "short" }).format(value);
+		}
+		return this._formatGraphTime(value, "axis");
+	}
+
 	_formatGraphDateTime(value) {
 		return `${this._formatGraphDate(value)} · ${this._formatGraphTime(value, "popup")}`;
 	}
@@ -1008,6 +1022,8 @@ class FreeboxCard extends HTMLElement {
 			this._trackerListsOpen[element.dataset.trackerList] = element.open;
 		});
 
+		this._sharedHistoryWindow = null;
+		this._sharedHistoryTicks = null;
 		const e = this._hass ? this._resolveEntities() : {};
 		const internetInfo = this._hass ? this._getInternetInfo() : {};
 		const selectedDeviceId = this._hass ? this._getSelectedDeviceId() : "";
@@ -1081,66 +1097,34 @@ class FreeboxCard extends HTMLElement {
 		this._initializeNetworkQualityChart();
 	}
 
-	_renderAdaptiveTimeAxis(axis, start, end, hours) {
+	_renderAdaptiveTimeAxis(axis, start, end, hours, sharedTicks = null) {
 		const width = axis?.getBoundingClientRect().width || 0;
-		if (!width || !Number.isFinite(start) || !Number.isFinite(end)) return;
-		const sample = document.createElement("span");
-		sample.className = "history-x-measure";
-		sample.textContent = this._formatGraphTime(new Date(end), "axis");
-		axis.replaceChildren(sample);
-		const labelWidth = Math.ceil(sample.getBoundingClientRect().width || 52);
-		const minimumSpacing = labelWidth + 18;
-		const targetLabels = Math.max(2, Math.min(10, Math.floor(width / Math.max(minimumSpacing, 1))));
-		const idealStep = hours / Math.max(1, targetLabels - 1);
-		const allowedSteps = [1, 2, 3, 4, 6, 8, 12, 24, 48, 72, 96, 168];
-		const candidateSteps = allowedSteps.filter((step) => step >= idealStep * .7).slice(0, 4);
+		if (!width || !Number.isFinite(start) || !Number.isFinite(end)) return [];
 		const range = Math.max(end - start, 1);
-		const edgeTarget = Math.min(.08, (labelWidth / 2 + 3) / Math.max(width, 1));
-		const buildTicks = (stepHours, offsetHours) => {
-			const stepMs = stepHours * 3600000;
-			const offsetMs = offsetHours * 3600000;
-			let tick = Math.ceil((start - offsetMs) / stepMs) * stepMs + offsetMs;
-			const ticks = [];
-			for (; tick <= end; tick += stepMs) ticks.push(tick);
-			return ticks;
-		};
-		let best = null;
-		for (const step of candidateSteps.length ? candidateSteps : [allowedSteps.at(-1)]) {
-			const offsets = step <= 24 ? Array.from({ length: step }, (_, index) => index) : [0];
-			for (const offset of offsets) {
-				const ticks = buildTicks(step, offset);
-				if (ticks.length < 2) continue;
-				const firstRatio = (ticks[0] - start) / range;
-				const lastRatio = (end - ticks.at(-1)) / range;
-				const densityPenalty = Math.abs(ticks.length - targetLabels) * .8;
-				const edgePenalty = Math.abs(firstRatio - edgeTarget) * 12 + Math.abs(lastRatio - edgeTarget) * 8;
-				const spacingPx = (step * 3600000 / range) * width;
-				const overlapPenalty = spacingPx < minimumSpacing ? (minimumSpacing - spacingPx) * .25 : 0;
-				const score = densityPenalty + edgePenalty + overlapPenalty;
-				if (!best || score < best.score) best = { score, ticks };
-			}
+		let ticks = Array.isArray(sharedTicks)
+			? sharedTicks.filter((timestamp) => timestamp >= start && timestamp <= end)
+			: [];
+		if (!ticks.length) {
+			const targetIntervals = Math.max(2, Math.min(8, Math.floor(width / 52)));
+			const rawStepHours = (range / 3600000) / targetIntervals;
+			const allowedSteps = [1, 2, 3, 4, 6, 8, 12, 24, 48, 72, 96, 168];
+			const stepHours = allowedSteps.find((step) => step >= rawStepHours) || allowedSteps.at(-1);
+			const step = stepHours * 3600000;
+			const oneHour = 3600000;
+			const firstTick = Math.ceil(start / oneHour) * oneHour;
+			for (let tick = firstTick; tick <= end; tick += step) ticks.push(tick);
 		}
-		const ticks = best?.ticks || [];
 		axis.innerHTML = ticks.map((timestamp) => {
 			const ratio = (timestamp - start) / range;
-			return `<span data-ratio="${ratio}"><i aria-hidden="true"></i>${this._escape(this._formatGraphTime(new Date(timestamp), "axis"))}</span>`;
+			const label = this._formatGraphAxisTick(new Date(timestamp));
+			return `<span data-ratio="${ratio}"><i aria-hidden="true"></i>${this._escape(label)}</span>`;
 		}).join("");
-		const labels = [...axis.querySelectorAll("span[data-ratio]")];
-		let previousRight = -Infinity;
-		for (const label of labels) {
-			const ratio = Number(label.dataset.ratio);
-			const halfWidth = label.getBoundingClientRect().width / 2;
-			const idealX = Math.min(1, Math.max(0, ratio)) * width;
-			const safeX = Math.max(halfWidth, Math.min(width - halfWidth, idealX));
-			const left = safeX - halfWidth;
-			if (left < previousRight + 10) {
-				label.hidden = true;
-				continue;
-			}
-			label.style.left = `${safeX}px`;
-			label.style.setProperty("--tick-offset", `${idealX - safeX}px`);
-			previousRight = safeX + halfWidth;
+		for (const label of axis.querySelectorAll("span[data-ratio]")) {
+			const ratio = Math.min(1, Math.max(0, Number(label.dataset.ratio)));
+			label.style.left = `${ratio * width}px`;
+			label.style.setProperty("--tick-offset", "0px");
 		}
+		return ticks;
 	}
 
 	_initializeBandwidthHistoryAxis() {
@@ -1152,7 +1136,9 @@ class FreeboxCard extends HTMLElement {
 		const end = Number(chart.dataset.historyEnd);
 		const hours = Number(axis.dataset.historyHours) || 24;
 		const renderAxis = () => {
-			this._renderAdaptiveTimeAxis(axis, start, end, hours);
+			this._sharedHistoryTicks = this._renderAdaptiveTimeAxis(axis, start, end, hours);
+			const qualityAxis = this.shadowRoot?.querySelector(".quality-chart .history-x");
+			if (qualityAxis) this._renderAdaptiveTimeAxis(qualityAxis, start, end, hours, this._sharedHistoryTicks);
 			// Keep the plot background horizontal-only, like ApexCharts in this card.
 			svg.querySelectorAll(".history-hour-grid").forEach((line) => line.remove());
 		};
@@ -1200,7 +1186,7 @@ class FreeboxCard extends HTMLElement {
 			tooltip.hidden = false;
 			const chartRect = chart.getBoundingClientRect();
 			const gap = 14;
-			const plotLeft = 30;
+			const plotLeft = 0;
 			const maxLeft = Math.max(plotLeft, chartRect.width - tooltip.offsetWidth - 4);
 			const roomRight = chartRect.width - x;
 			const tooltipLeft = roomRight >= tooltip.offsetWidth + gap
@@ -1223,7 +1209,7 @@ class FreeboxCard extends HTMLElement {
 		const start = Number(chart.dataset.historyStart), end = Number(chart.dataset.historyEnd);
 		const latencyMaximum = Number(chart.dataset.latencyMax), lossMaximum = Number(chart.dataset.lossMax);
 		const hours = Number(axis?.dataset.historyHours) || 24;
-		const renderAxis = () => this._renderAdaptiveTimeAxis(axis, start, end, hours);
+		const renderAxis = () => this._renderAdaptiveTimeAxis(axis, start, end, hours, this._sharedHistoryTicks);
 		renderAxis();
 		if (typeof ResizeObserver !== "undefined") { this._networkAxisObserver?.disconnect(); this._networkAxisObserver = new ResizeObserver(renderAxis); this._networkAxisObserver.observe(axis); }
 		if (!overlay || !tooltip || !cursor) return;
@@ -1247,7 +1233,7 @@ class FreeboxCard extends HTMLElement {
 			placeDot(latencyDot,latency,latencyMaximum); placeDot(lossDot,loss,lossMaximum);
 			tooltip.innerHTML=`<strong>${this._escape(formatPopupDateTime(reference.timestamp))}</strong>${latency?`<span><i class="latency"></i>${this._t("latency")}: <b>${number.format(latency.value)} ms</b></span>`:""}${loss?`<span><i class="loss"></i>${this._t("packet_loss")}: <b>${number.format(loss.value)} %</b></span>`:""}`;
 			tooltip.hidden=false;
-			const chartRect=chart.getBoundingClientRect(), gap=14, plotLeft=30, plotRight=35;
+			const chartRect=chart.getBoundingClientRect(), gap=14, plotLeft=0, plotRight=35;
 			const maxLeft=Math.max(plotLeft,chartRect.width-tooltip.offsetWidth-plotRight);
 			const roomRight=chartRect.width-plotRight-x;
 			const tooltipLeft=roomRight>=tooltip.offsetWidth+gap?Math.min(x+gap,maxLeft):Math.max(plotLeft,x-tooltip.offsetWidth-gap);
@@ -1476,11 +1462,17 @@ class FreeboxCard extends HTMLElement {
 		return `${path} L${lastX.toFixed(1)},${height} L${firstX.toFixed(1)},${height} Z`;
 	}
 
+	_getSharedHistoryWindow() {
+		const hours = Math.min(Math.max(Number.parseInt(this._config.history_hours, 10) || 24, 1), 168);
+		if (!this._sharedHistoryWindow || this._sharedHistoryWindow.hours !== hours) {
+			const end = Date.now();
+			this._sharedHistoryWindow = { hours, end, start: end - hours * 3600000 };
+		}
+		return this._sharedHistoryWindow;
+	}
 	_bandwidthHistoryChart(downloadEntity, uploadEntity) {
 		if (!this._config.show_bandwidth_history) return "";
-		const hours = Math.min(Math.max(Number.parseInt(this._config.history_hours, 10) || 24, 1), 168);
-		const end = Date.now();
-		const start = end - hours * 3600000;
+		const { hours, start, end } = this._getSharedHistoryWindow();
 		const download = this._bandwidthHistory.series[downloadEntity] || [];
 		const upload = this._bandwidthHistory.series[uploadEntity] || [];
 		const points = [...download, ...upload].filter((point) => point.timestamp >= start && point.timestamp <= end);
@@ -1530,9 +1522,7 @@ class FreeboxCard extends HTMLElement {
 
 	_networkQualityHistoryChart(latencyEntity, packetLossEntity) {
 		if (!this._config.show_network_quality_history || (!latencyEntity && !packetLossEntity)) return "";
-		const hours = Math.min(Math.max(Number.parseInt(this._config.history_hours, 10) || 24, 1), 168);
-		const end = Date.now();
-		const start = end - hours * 3600000;
+		const { hours, start, end } = this._getSharedHistoryWindow();
 		const latency = this._groupBandwidthHistory(this._networkQualityHistory.series[latencyEntity] || [], start, end, 5 * 60 * 1000);
 		const packetLoss = this._groupBandwidthHistory(this._networkQualityHistory.series[packetLossEntity] || [], start, end, 5 * 60 * 1000);
 		if (!latency.length && !packetLoss.length) return "";
@@ -1978,7 +1968,7 @@ class FreeboxCard extends HTMLElement {
 			.history-title { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; color:var(--secondary-text-color); font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
 			.history-title small { font-size:9px; font-weight:600; }
 			.history-chart { position:relative; display:grid; grid-template-columns:30px minmax(0,1fr); grid-template-rows:135px 24px; min-width:0; min-height:159px; margin-top:14px; }
-			.history-chart svg { width:100%; height:135px; overflow:hidden; }
+			.history-chart svg { grid-column:2; width:100%; height:135px; overflow:hidden; }
 			.history-hover-overlay { position:absolute; z-index:4; left:30px; right:0; top:0; height:135px; cursor:crosshair; }
 			.history-cursor { position:absolute; z-index:3; top:0; height:135px; border-left:1px dashed var(--secondary-text-color); pointer-events:none; opacity:.75; }
 			.history-hover-dot { position:absolute; z-index:5; width:7px; height:7px; border:2px solid var(--card-background-color); border-radius:50%; transform:translate(-50%,-50%); pointer-events:none; }
@@ -2049,7 +2039,7 @@ class FreeboxCard extends HTMLElement {
 			.quality-tooltip i { display:inline-block; width:7px; height:7px; margin-right:5px; border-radius:50%; } .quality-tooltip i.latency { background:#43a047; } .quality-tooltip i.loss { background:#c62828; }
 			.quality-max-marker { pointer-events:none; } .quality-max-marker line { stroke-width:1; vector-effect:non-scaling-stroke; } .quality-max-marker rect { opacity:.96; } .quality-max-marker text { fill:#fff; font-size:12px; font-weight:400; } .quality-max-marker.latency text { fill:#000; } .quality-max-marker.latency line,.quality-max-marker.latency circle { stroke:#43a047; fill:#43a047; } .quality-max-marker.latency rect { fill:#43a047; } .quality-max-marker.loss line,.quality-max-marker.loss circle { stroke:#c62828; fill:#c62828; } .quality-max-marker.loss rect { fill:#c62828; }
 			ha-card.light-theme .quality-y, ha-card.light-theme .quality-unit { color:#202124; } ha-card.dark-theme .quality-y, ha-card.dark-theme .quality-unit { color:#fff; }
-			@media (max-width:520px) { .quality-chart { grid-template-columns:0 29px minmax(0,1fr) 23px 10px; } .quality-unit { font-size:10px; } .quality-unit.left { left:-8px; width:11px; } .quality-unit.right { right:-8px; } .quality-y { font-size:10px; } .quality-hover-overlay { left:29px; right:33px; } }
+			@media (max-width:520px) { .quality-chart { grid-template-columns:0 minmax(0,1fr) 23px 10px; } .quality-unit { font-size:10px; } .quality-unit.left { left:-8px; width:11px; } .quality-unit.right { right:-8px; } .quality-y { font-size:10px; } .quality-hover-overlay { left:0; right:33px; } }
 			.internet-metric { position:relative; display:grid; grid-template-columns:40px minmax(0,1fr); grid-template-rows:min-content min-content; column-gap:8px; align-items:center; min-width:0; padding:7px 8px; border:1px solid var(--divider-color); border-radius:12px; color:var(--primary-text-color); background:var(--card-background-color); font:inherit; text-align:left; }
 			.internet-metric svg { grid-row:1 / 3; width:40px; height:40px; transform:rotate(-90deg); }
 			.metric-icon { position:absolute; left:8px; top:calc(50% - 3px); display:flex; align-items:center; justify-content:center; width:40px; height:40px; transform:translateY(-50%); pointer-events:none; }
