@@ -2065,6 +2065,8 @@ class FreeboxCard extends HTMLElement {
 			.hardware-group-title { display:flex; align-items:center; gap:6px; margin-bottom:8px; color:var(--secondary-text-color); font-size:10px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; }
 			.hardware-group-title ha-icon { --mdc-icon-size:15px; color:var(--freebox-accent); }
 			.hardware-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(105px,1fr)); gap:8px; }
+			.hardware-grid:not(.temperature-grid):has(.hardware-tile:only-child) { grid-template-columns:max-content; }
+			.hardware-grid:not(.temperature-grid):has(.hardware-tile:only-child) .hardware-tile { width:max-content; min-width:105px; }
 			.hardware-grid.temperature-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
 			@media (max-width:520px) { .hardware-grid.temperature-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 			@media (max-width:360px) { .hardware-grid.temperature-grid { grid-template-columns:1fr; } }
