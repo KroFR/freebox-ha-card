@@ -1327,12 +1327,10 @@ class FreeboxCard extends HTMLElement {
 			}
 			parsed.push({ timestamp, value: Math.max(0, rawValue) });
 		}
-		console.info("[freebox-card][history] Parsed series", { entityId, received: rawSeries.length, parsed: parsed.length, rejected, unit: this._hass?.states?.[entityId]?.attributes?.unit_of_measurement, firstRaw: rawSeries[0] ?? null, lastRaw: rawSeries.at(-1) ?? null });
 		return parsed.sort((x, y) => x.timestamp - y.timestamp);
 	}
 
 	async _loadBandwidthHistory(downloadEntity, uploadEntity) {
-		console.info("[freebox-card][history] Loader called", { downloadEntity, uploadEntity, enabled: this._config.show_bandwidth_history, hasCallApi: Boolean(this._hass?.callApi) });
 		if (!this._hass?.callApi || !this._config.show_bandwidth_history) return;
 		const entityIds = [downloadEntity, uploadEntity].filter((id) => this._isValidEntityId(id));
 		if (!entityIds.length) {
@@ -1353,11 +1351,8 @@ class FreeboxCard extends HTMLElement {
 				significant_changes_only: "0",
 			});
 			const request = `history/period/${start.toISOString()}?${query.toString()}`;
-			console.info("[freebox-card][history] Request", request);
 			const history = await this._hass.callApi("GET", request);
-			console.info("[freebox-card][history] Raw response", history);
 			const series = Object.fromEntries(entityIds.map((id) => [id, this._normalizeBandwidthHistory(history, id)]));
-			console.info("[freebox-card][history] Normalized counts", Object.fromEntries(entityIds.map((id) => [id, series[id].length])));
 			this._bandwidthHistory = { key, loadedAt: Date.now(), loading: false, series };
 		} catch (error) {
 			console.error("[freebox-card][history] Unable to load bandwidth history", { error, entityIds, hours });
