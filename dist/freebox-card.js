@@ -5,7 +5,7 @@
  *
  * License: MIT
  */
-const CARD_VERSION = "2026.11.3";
+const CARD_VERSION = "2026.11.4";
 
 /* ---------------------------------------------------------------------- */
 /*  Languages                                                             */
@@ -442,7 +442,9 @@ class FreeboxCard extends HTMLElement {
 
 	_getCollapsedSectionsStorageKey() {
 		const deviceId = this._getSelectedDeviceId() || "auto";
-		return `freebox-card:collapsed-sections:${deviceId}:${this._getCardPositionIdentity()}`;
+		if (!this._stableCollapsedSectionsIdentity)
+			this._stableCollapsedSectionsIdentity = this._getCardPositionIdentity();
+		return `freebox-card:collapsed-sections:${deviceId}:${this._stableCollapsedSectionsIdentity}`;
 	}
 
 	_normalizeCollapsedSections(value) {
