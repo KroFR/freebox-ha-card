@@ -2068,8 +2068,15 @@ class FreeboxCard extends HTMLElement {
 			.hardware-grid:not(.temperature-grid):has(.hardware-tile:only-child) { grid-template-columns:max-content; }
 			.hardware-grid:not(.temperature-grid):has(.hardware-tile:only-child) .hardware-tile { width:max-content; min-width:105px; }
 			.hardware-grid.temperature-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
-			@media (max-width:520px) { .hardware-grid.temperature-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
-			@media (max-width:360px) { .hardware-grid.temperature-grid { grid-template-columns:1fr; } }
+			.hardware-grid.temperature-grid:has(.hardware-tile:only-child) { grid-template-columns:max-content; }
+			.hardware-grid.temperature-grid:has(.hardware-tile:only-child) .hardware-tile { width:max-content; min-width:105px; }
+			.hardware-grid.temperature-grid:has(.hardware-tile:nth-child(2):last-child) { grid-template-columns:repeat(2,minmax(0,1fr)); }
+			@media (max-width:520px) {
+				.hardware-grid.temperature-grid:not(:has(.hardware-tile:only-child)) { grid-template-columns:repeat(2,minmax(0,1fr)); }
+			}
+			@media (max-width:360px) {
+				.hardware-grid.temperature-grid:not(:has(.hardware-tile:only-child)) { grid-template-columns:1fr; }
+			}
 			.hardware-tile { display:grid; grid-template-columns:44px minmax(0,1fr); grid-template-rows:auto auto; align-items:center; column-gap:8px; min-width:0; padding:8px; border:1px solid var(--divider-color); border-radius:12px; color:var(--primary-text-color); background:var(--card-background-color); font:inherit; text-align:left; }
 			.hardware-tile.raid-status { display:grid; grid-template-columns:32px minmax(0,1fr); grid-template-rows:auto; align-items:center; gap:8px; min-height:44px; border-color:var(--divider-color); background:var(--card-background-color); }
 			.raid-marker { display:flex; align-items:center; justify-content:center; width:32px; height:32px; color:var(--raid-color); }
