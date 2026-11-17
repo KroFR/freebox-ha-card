@@ -344,6 +344,7 @@ class FreeboxCard extends HTMLElement {
 		this._collapsedSectionsLoaded = false;
 		this._collapsedSectionsLoading = false;
 		this._unsubscribeCollapsedSections = null;
+		this._lastLocalePreferences = "";
 	}
 
 	setConfig(config) {
@@ -368,8 +369,15 @@ class FreeboxCard extends HTMLElement {
 		this._hass = hass;
 		this._loadRegistries();
 		this._ensureCollapsedSectionsStorage();
+		const localePreferences = JSON.stringify({
+			language: hass.locale?.language || hass.language || "",
+			timeFormat: hass.locale?.time_format || "",
+			dateFormat: hass.locale?.date_format || "",
+		});
+		const localeChanged = localePreferences !== this._lastLocalePreferences;
+		this._lastLocalePreferences = localePreferences;
 		const signature = this._getRenderSignature(hass);
-		if (signature === this._lastRenderSignature) return;
+		if (!localeChanged && signature === this._lastRenderSignature) return;
 		this._lastRenderSignature = signature;
 		this._render();
 	}
@@ -389,6 +397,8 @@ class FreeboxCard extends HTMLElement {
 		return JSON.stringify({
 			deviceId: this._getSelectedDeviceId(),
 			language: resolveLanguage(hass, this._config.language || "auto"),
+			timeFormat: hass.locale?.time_format || "",
+			dateFormat: hass.locale?.date_format || "",
 			darkMode: Boolean(hass.themes?.darkMode),
 			states,
 		});
@@ -524,6 +534,66 @@ class FreeboxCard extends HTMLElement {
 
 	_t(key) {
 		return translate(this._getLanguage(), `card.${key}`);
+	}
+
+	_getLocaleTag() {
+		return this._hass?.locale?.language || this._hass?.language || this._getLanguage();
+	}
+
+	_getHour12Preference() {
+		const value = String(this._hass?.locale?.time_format || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+		if (["12", "12_hour", "12_hours", "am_pm"].includes(value)) return true;
+		if (["24", "24_hour", "24_hours"].includes(value)) return false;
+		return undefined;
+	}
+	_getHaDateOrder() {
+		const raw = String(this._hass?.locale?.date_format || "").trim();
+		const compact = raw.toUpperCase().replace(/[^A-Z]/g, "");
+		// Home Assistant DateFormat values are DMY, MDY, YMD, language, or system.
+		if (["DMY", "DDMMYYYY", "DAYMONTHYEAR", "DAYMONTHYEARLONG"].includes(compact)) return "DMY";
+		if (["MDY", "MMDDYYYY", "MONTHDAYYEAR", "MONTHDAYYEARLONG"].includes(compact)) return "MDY";
+		if (["YMD", "YYYYMMDD", "YEARMONTHDAY", "YEARMONTHDAYLONG"].includes(compact)) return "YMD";
+		return "LOCALE";
+	}
+	_getDateSeparator(value = new Date()) {
+		const literal = new Intl.DateTimeFormat(this._getLocaleTag(), {
+			year: "numeric", month: "2-digit", day: "2-digit",
+		}).formatToParts(value).find((part) => part.type === "literal")?.value;
+		return literal || "/";
+	}
+
+	_getDateParts(value) {
+		const parts = new Intl.DateTimeFormat(this._getLocaleTag(), {
+			year: "numeric", month: "2-digit", day: "2-digit",
+		}).formatToParts(value);
+		return Object.fromEntries(parts.filter((part) => part.type !== "literal").map((part) => [part.type, part.value]));
+	}
+	_formatGraphTime(value, context = "axis") {
+		const hour12 = this._getHour12Preference();
+		const options = { hour: "2-digit", minute: "2-digit", ...(hour12 === undefined ? {} : { hour12 }) };
+		let formatted = new Intl.DateTimeFormat(this._getLocaleTag(), options).format(value);
+		if (hour12 === true) {
+			formatted = context === "axis"
+				? formatted.replace(/\b(AM|PM)\b/gi, (period) => period.toLowerCase())
+				: formatted.replace(/\b(am|pm)\b/gi, (period) => period.toUpperCase());
+		}
+		return formatted;
+	}
+	_formatGraphDate(value) {
+		const order = this._getHaDateOrder();
+		if (order === "LOCALE") {
+			return new Intl.DateTimeFormat(this._getLocaleTag(), {
+				year: "numeric", month: "2-digit", day: "2-digit",
+			}).format(value);
+		}
+		const { day, month, year } = this._getDateParts(value);
+		const separator = this._getDateSeparator(value);
+		if (order === "DMY") return [day, month, year].join(separator);
+		if (order === "MDY") return [month, day, year].join(separator);
+		return [year, month, day].join(separator);
+	}
+	_formatGraphDateTime(value) {
+		return `${this._formatGraphDate(value)} · ${this._formatGraphTime(value, "popup")}`;
 	}
 
 	_getSelectedDeviceId() {
@@ -1020,7 +1090,7 @@ class FreeboxCard extends HTMLElement {
 		const start = Number(chart.dataset.historyStart);
 		const end = Number(chart.dataset.historyEnd);
 		const hours = Number(axis.dataset.historyHours) || 24;
-		const formatter = new Intl.DateTimeFormat(this._getLanguage(), { hour: "2-digit", minute: "2-digit", hour12: false });
+		const formatAxisTime = (timestamp) => this._formatGraphTime(new Date(timestamp), "axis");
 		const renderAxis = () => {
 			const width = axis.getBoundingClientRect().width;
 			if (!width || !Number.isFinite(start) || !Number.isFinite(end)) return;
@@ -1036,7 +1106,7 @@ class FreeboxCard extends HTMLElement {
 			for (; tick <= end; tick += hourStep * 3600000) ticks.push(tick);
 			axis.innerHTML = ticks.map((timestamp) => {
 				const ratio = (timestamp - start) / Math.max(end - start, 1);
-				return `<span style="left:${ratio * 100}%"><i aria-hidden="true"></i>${this._escape(formatter.format(new Date(timestamp)))}</span>`;
+				return `<span style="left:${ratio * 100}%"><i aria-hidden="true"></i>${this._escape(formatAxisTime(timestamp))}</span>`;
 			}).join("");
 			// Keep the plot background horizontal-only, like ApexCharts in this card.
 			svg.querySelectorAll(".history-hour-grid").forEach((line) => line.remove());
@@ -1065,7 +1135,7 @@ class FreeboxCard extends HTMLElement {
 		const nearest = (series, timestamp) => series.length ? series.reduce((best, point) =>
 			Math.abs(point.timestamp - timestamp) < Math.abs(best.timestamp - timestamp) ? point : best, series[0]) : null;
 		const number = new Intl.NumberFormat(this._getLanguage(), { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-		const time = new Intl.DateTimeFormat(this._getLanguage(), { hour: "2-digit", minute: "2-digit" });
+		const formatPopupDateTime = (timestamp) => this._formatGraphDateTime(new Date(timestamp));
 		const hide = () => { tooltip.hidden = true; cursor.hidden = true; if (downloadDot) downloadDot.hidden = true; if (uploadDot) uploadDot.hidden = true; };
 		overlay.addEventListener("pointermove", (event) => {
 			const rect = overlay.getBoundingClientRect();
@@ -1081,7 +1151,7 @@ class FreeboxCard extends HTMLElement {
 			cursor.style.left = `${x}px`; cursor.hidden = false;
 			const placeDot = (dot, point) => { if (!dot || !point) return; dot.hidden = false; dot.style.left = `${x}px`; dot.style.top = `${Math.min(1, Math.max(0, 1 - point.value / maximum)) * 135}px`; };
 			placeDot(downloadDot, d); placeDot(uploadDot, u);
-			tooltip.innerHTML = `<strong>${this._escape(time.format(new Date(reference.timestamp)))}</strong>${d ? `<span><i class="download"></i>${this._t("download")}: <b>${number.format(d.value)} Mbit/s</b></span>` : ""}${u ? `<span><i class="upload"></i>${this._t("upload")}: <b>${number.format(u.value)} Mbit/s</b></span>` : ""}`;
+			tooltip.innerHTML = `<strong>${this._escape(formatPopupDateTime(reference.timestamp))}</strong>${d ? `<span><i class="download"></i>${this._t("download")}: <b>${number.format(d.value)} Mbit/s</b></span>` : ""}${u ? `<span><i class="upload"></i>${this._t("upload")}: <b>${number.format(u.value)} Mbit/s</b></span>` : ""}`;
 			tooltip.hidden = false;
 			const chartRect = chart.getBoundingClientRect();
 			const gap = 14;
@@ -1108,7 +1178,7 @@ class FreeboxCard extends HTMLElement {
 		const start = Number(chart.dataset.historyStart), end = Number(chart.dataset.historyEnd);
 		const latencyMaximum = Number(chart.dataset.latencyMax), lossMaximum = Number(chart.dataset.lossMax);
 		const hours = Number(axis?.dataset.historyHours) || 24;
-		const formatter = new Intl.DateTimeFormat(this._getLanguage(), { hour: "2-digit", minute: "2-digit", hour12: false });
+		const formatAxisTime = (timestamp) => this._formatGraphTime(new Date(timestamp), "axis");
 		const renderAxis = () => {
 			const width = axis?.getBoundingClientRect().width || 0;
 			if (!width) return;
@@ -1118,7 +1188,7 @@ class FreeboxCard extends HTMLElement {
 			let tick = Math.ceil(start / 3600000) * 3600000;
 			while (new Date(tick).getHours() % Math.min(step,24) !== 0) tick += 3600000;
 			const ticks=[]; for (; tick<=end; tick += step*3600000) ticks.push(tick);
-			axis.innerHTML = ticks.map((timestamp) => `<span style="left:${(timestamp-start)/Math.max(end-start,1)*100}%"><i></i>${this._escape(formatter.format(new Date(timestamp)))}</span>`).join("");
+			axis.innerHTML = ticks.map((timestamp) => `<span style="left:${(timestamp-start)/Math.max(end-start,1)*100}%"><i></i>${this._escape(formatAxisTime(timestamp))}</span>`).join("");
 		};
 		renderAxis();
 		if (typeof ResizeObserver !== "undefined") { this._networkAxisObserver?.disconnect(); this._networkAxisObserver = new ResizeObserver(renderAxis); this._networkAxisObserver.observe(axis); }
@@ -1126,7 +1196,7 @@ class FreeboxCard extends HTMLElement {
 		const latencySeries=this._networkQualityHoverData?.latency||[], lossSeries=this._networkQualityHoverData?.packetLoss||[];
 		const nearest=(series,timestamp)=>series.length?series.reduce((best,p)=>Math.abs(p.timestamp-timestamp)<Math.abs(best.timestamp-timestamp)?p:best,series[0]):null;
 		const number=new Intl.NumberFormat(this._getLanguage(),{minimumFractionDigits:1,maximumFractionDigits:1});
-		const time=new Intl.DateTimeFormat(this._getLanguage(),{hour:"2-digit",minute:"2-digit"});
+		const formatPopupDateTime=(timestamp)=>this._formatGraphDateTime(new Date(timestamp));
 		const hide=()=>{ tooltip.hidden=true; cursor.hidden=true; if(latencyDot)latencyDot.hidden=true; if(lossDot)lossDot.hidden=true; };
 		overlay.addEventListener("pointermove",(event)=>{
 			const rect=overlay.getBoundingClientRect();
@@ -1141,7 +1211,7 @@ class FreeboxCard extends HTMLElement {
 			cursor.style.left=`${x}px`; cursor.hidden=false;
 			const placeDot=(dot,point,maximum)=>{ if(!dot||!point||!maximum)return; dot.hidden=false; dot.style.left=`${x}px`; dot.style.top=`${Math.min(1,Math.max(0,1-point.value/maximum))*135}px`; };
 			placeDot(latencyDot,latency,latencyMaximum); placeDot(lossDot,loss,lossMaximum);
-			tooltip.innerHTML=`<strong>${this._escape(time.format(new Date(reference.timestamp)))}</strong>${latency?`<span><i class="latency"></i>${this._t("latency")}: <b>${number.format(latency.value)} ms</b></span>`:""}${loss?`<span><i class="loss"></i>${this._t("packet_loss")}: <b>${number.format(loss.value)} %</b></span>`:""}`;
+			tooltip.innerHTML=`<strong>${this._escape(formatPopupDateTime(reference.timestamp))}</strong>${latency?`<span><i class="latency"></i>${this._t("latency")}: <b>${number.format(latency.value)} ms</b></span>`:""}${loss?`<span><i class="loss"></i>${this._t("packet_loss")}: <b>${number.format(loss.value)} %</b></span>`:""}`;
 			tooltip.hidden=false;
 			const chartRect=chart.getBoundingClientRect(), gap=14, plotLeft=24, plotRight=35;
 			const maxLeft=Math.max(plotLeft,chartRect.width-tooltip.offsetWidth-plotRight);
