@@ -103,8 +103,9 @@ The card attempts to select the Freebox automatically by locating a `device_trac
 | `upload_bandwidth` | number | no | — | Maximum upload bandwidth in Mbit/s, used to calculate the gauge percentage |
 | `show_live_metrics` | boolean | no | `true` | Show real-time bandwidth metrics |
 | `show_bandwidth_history` | boolean | no | `true` | Show the bandwidth history chart |
+| `show_network_quality_history` | boolean | no | `true` | Show the latency and packet loss history chart |
 | `show_history_maximums` | boolean | no | `true` | Show maximum values on the chart |
-| `history_hours` | number | no | `8` | Number of hours displayed in the bandwidth history chart, from 1 to 168 |
+| `history_hours` | number | no | `24` | Number of hours displayed in the history charts, from 1 to 168 |
 | `section_order` | list | no | see below | Display order for card sections |
 | `show_internet` | boolean | no | `true` | Show bandwidth information |
 | `show_system` | boolean | no | `true` | Show system information and actions |
@@ -129,20 +130,20 @@ section_order:
   - debug
 ```
 
-## 📈 Bandwidth history
+## 📈 History charts
 
-The Bandwidth section includes a history chart for download and upload traffic.
+The **Bandwidth** section includes two charts: download and upload history, plus latency and packet loss history.
 
-The chart:
+The charts:
 
-- Uses Home Assistant history data from the detected Freebox download and upload sensors
-- Displays the last 24 hours by default
-- Supports a configurable period from 1 to 168 hours
-- Groups data into 5-minute periods and displays the average for each period
-- Uses responsive axes and adaptive scaling for desktop and mobile readability
-- Shows Download and Upload values on hover
-- Supports optional maximum value indicators directly on the chart
-- Can be disabled independently from the Bandwidth section
+- Use Home Assistant history data from the available download, upload, latency, and packet loss sensors
+- Display the last 24 hours by default
+- Support a configurable period from 1 to 168 hours
+- Group data into 5-minute periods and display the average for each period
+- Use responsive axes and adaptive scaling for desktop and mobile readability
+- Show Download and Upload, or Latency and Packet Loss values on hover
+- Support optional maximum value indicators directly on the charts
+- Can be disabled independently from the **Bandwidth** section
 
 The history settings are available under **Card layout > Bandwidth** in the visual editor.
 
