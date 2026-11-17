@@ -14,31 +14,31 @@ Une carte Lovelace responsive pour [Home Assistant](https://www.home-assistant.i
 
 | Thème clair | Thème sombre |
 |---|---|
-| <img width="501" height="371" alt="image" src="https://github.com/user-attachments/assets/a2fec276-2bbf-4a93-a037-2ef7be1e6454" /> | <img width="504" height="371" alt="image" src="https://github.com/user-attachments/assets/a54ae33f-6770-4f84-bde9-d6ebf1bc53a9" /> |
+| <img width="500" height="588" alt="image" src="https://github.com/user-attachments/assets/f9d12913-d2c4-425b-8f51-692410b81931" /> | <img width="505" height="589" alt="image" src="https://github.com/user-attachments/assets/7c606d1b-fd00-4db9-ba54-133bab54a9bf" /> |
 
 ### Système
 
 | Thème clair | Thème sombre |
 |---|---|
-| <img width="500" height="530" alt="image" src="https://github.com/user-attachments/assets/5fff20c3-7176-492f-b6e8-d592904f76b2" /> | <img width="502" height="533" alt="image" src="https://github.com/user-attachments/assets/a8f6cedf-f0b9-4757-96e5-321ab83b25fb" /> |
+| <img width="501" height="532" alt="image" src="https://github.com/user-attachments/assets/1349d2c9-d0f8-4131-b32b-a95aed3c7606" /> | <img width="504" height="534" alt="image" src="https://github.com/user-attachments/assets/13bc1390-3119-4410-84c1-86e537c59306" /> |
 
 ### Matériel
 
 | Thème clair | Thème sombre |
 |---|---|
-| <img width="458" height="518" alt="image" src="https://github.com/user-attachments/assets/b070bfef-47ad-4c72-8c9b-62089d848943" /> | <img width="462" height="521" alt="image" src="https://github.com/user-attachments/assets/20467e85-d3be-4dbe-8f71-8081782d1526" /> |
+| <img width="500" height="449" alt="image" src="https://github.com/user-attachments/assets/3551db42-e3f7-4799-89d3-e7ee231cdeec" /> | <img width="504" height="451" alt="image" src="https://github.com/user-attachments/assets/6d8cc7e9-3629-4d22-8c9b-380bb4ca2c74" /> |
 
 ### Téléphonie
 
 | Thème clair | Thème sombre |
 |---|---|
-| <img width="459" height="119" alt="image" src="https://github.com/user-attachments/assets/b56ab16d-a0f2-4d4a-b9b3-9a6bf344f351" /> | <img width="459" height="120" alt="image" src="https://github.com/user-attachments/assets/7772f2c4-5640-4d48-aa23-570b8c576fb3" /> |
+| <img width="501" height="121" alt="image" src="https://github.com/user-attachments/assets/527acd72-c4e8-416f-b238-78e8fdb7253c" /> | <img width="505" height="125" alt="image" src="https://github.com/user-attachments/assets/24353bd5-f1e3-4383-83f5-02b9e45f80c7" /> |
 
 ### Appareils
 
 | Thème clair | Thème sombre |
 |---|---|
-| <img width="460" height="220" alt="image" src="https://github.com/user-attachments/assets/1e97c401-ead8-44fc-83e1-6f771eeeab70" /> | <img width="461" height="222" alt="image" src="https://github.com/user-attachments/assets/e410eda8-2ea7-4e89-a744-a21d07702f90" /> |
+| <img width="502" height="221" alt="image" src="https://github.com/user-attachments/assets/e272b553-c890-4d51-a76e-df4cf89ee327" /> | <img width="504" height="221" alt="image" src="https://github.com/user-attachments/assets/747b9a3f-0bbc-4ba6-9ad7-f69662594964" /> |
 
 ## ✨ Fonctionnalités
 
