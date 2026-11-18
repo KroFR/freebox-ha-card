@@ -5,7 +5,7 @@
  *
  * License: MIT
  */
-const CARD_VERSION = "2026.11.4";
+const CARD_VERSION = "2026.11.5";
 
 /* ---------------------------------------------------------------------- */
 /*  Languages                                                             */
@@ -1146,7 +1146,6 @@ class FreeboxCard extends HTMLElement {
 			this._sharedHistoryTicks = this._renderAdaptiveTimeAxis(axis, start, end, hours);
 			const qualityAxis = this.shadowRoot?.querySelector(".quality-chart .history-x");
 			if (qualityAxis) this._renderAdaptiveTimeAxis(qualityAxis, start, end, hours, this._sharedHistoryTicks);
-			// Keep the plot background horizontal-only, like ApexCharts in this card.
 			svg.querySelectorAll(".history-hour-grid").forEach((line) => line.remove());
 		};
 		renderAxis();
@@ -2046,7 +2045,7 @@ class FreeboxCard extends HTMLElement {
 			.quality-tooltip i { display:inline-block; width:7px; height:7px; margin-right:5px; border-radius:50%; } .quality-tooltip i.latency { background:#43a047; } .quality-tooltip i.loss { background:#c62828; }
 			.quality-max-marker { pointer-events:none; } .quality-max-marker line { stroke-width:1; vector-effect:non-scaling-stroke; } .quality-max-marker rect { opacity:.96; } .quality-max-marker text { fill:#fff; font-size:12px; font-weight:400; } .quality-max-marker.latency text { fill:#000; } .quality-max-marker.latency line,.quality-max-marker.latency circle { stroke:#43a047; fill:#43a047; } .quality-max-marker.latency rect { fill:#43a047; } .quality-max-marker.loss line,.quality-max-marker.loss circle { stroke:#c62828; fill:#c62828; } .quality-max-marker.loss rect { fill:#c62828; }
 			ha-card.light-theme .quality-y, ha-card.light-theme .quality-unit { color:#202124; } ha-card.dark-theme .quality-y, ha-card.dark-theme .quality-unit { color:#fff; }
-			@media (max-width:520px) { .quality-chart { grid-template-columns:0 minmax(0,1fr) 23px 10px; } .quality-unit { font-size:10px; } .quality-unit.left { left:-8px; width:11px; } .quality-unit.right { right:-8px; } .quality-y { font-size:10px; } .quality-hover-overlay { left:0; right:33px; } }
+			@media (max-width:520px) { .quality-chart { grid-template-columns:0 29px minmax(0,1fr) 23px 10px; } .quality-unit { font-size:10px; } .quality-unit.left { left:-8px; width:11px; } .quality-unit.right { right:-8px; } .quality-y { font-size:10px; } .quality-hover-overlay { left:29px; right:33px; } }
 			.internet-metric { position:relative; display:grid; grid-template-columns:40px minmax(0,1fr); grid-template-rows:min-content min-content; column-gap:8px; align-items:center; min-width:0; padding:7px 8px; border:1px solid var(--divider-color); border-radius:12px; color:var(--primary-text-color); background:var(--card-background-color); font:inherit; text-align:left; }
 			.internet-metric svg { grid-row:1 / 3; width:40px; height:40px; transform:rotate(-90deg); }
 			.metric-icon { position:absolute; left:8px; top:calc(50% - 3px); display:flex; align-items:center; justify-content:center; width:40px; height:40px; transform:translateY(-50%); pointer-events:none; }
@@ -2078,12 +2077,8 @@ class FreeboxCard extends HTMLElement {
 			.hardware-grid.temperature-grid:has(.hardware-tile:only-child) { grid-template-columns:max-content; }
 			.hardware-grid.temperature-grid:has(.hardware-tile:only-child) .hardware-tile { width:max-content; min-width:105px; }
 			.hardware-grid.temperature-grid:has(.hardware-tile:nth-child(2):last-child) { grid-template-columns:repeat(2,minmax(0,1fr)); }
-			@media (max-width:520px) {
-				.hardware-grid.temperature-grid:not(:has(.hardware-tile:only-child)) { grid-template-columns:repeat(2,minmax(0,1fr)); }
-			}
-			@media (max-width:360px) {
-				.hardware-grid.temperature-grid:not(:has(.hardware-tile:only-child)) { grid-template-columns:1fr; }
-			}
+			@media (max-width:520px) { .hardware-grid.temperature-grid:not(:has(.hardware-tile:only-child)) { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+			@media (max-width:360px) { .hardware-grid.temperature-grid:not(:has(.hardware-tile:only-child)) { grid-template-columns:1fr; } }
 			.hardware-tile { display:grid; grid-template-columns:44px minmax(0,1fr); grid-template-rows:auto auto; align-items:center; column-gap:8px; min-width:0; padding:8px; border:1px solid var(--divider-color); border-radius:12px; color:var(--primary-text-color); background:var(--card-background-color); font:inherit; text-align:left; }
 			.hardware-tile.raid-status { display:grid; grid-template-columns:32px minmax(0,1fr); grid-template-rows:auto; align-items:center; gap:8px; min-height:44px; border-color:var(--divider-color); background:var(--card-background-color); }
 			.raid-marker { display:flex; align-items:center; justify-content:center; width:32px; height:32px; color:var(--raid-color); }
