@@ -59,7 +59,7 @@ Une carte Lovelace responsive pour [Home Assistant](https://www.home-assistant.i
 - Appareil Freebox possédant une entité `device_tracker.freebox` ou `device_tracker.freebox_*`
 - Optionnel : intégration [Ping (ICMP)](https://www.home-assistant.io/integrations/ping) configurée pour la détection automatique et l’affichage de la latence
 
-Certaines sections apparaissent uniquement lorsque les entités nécessaires sont disponibles. Le contenu matériel et téléphonique dépend des entités exposées par votre modèle de Freebox et la version de l’intégration.
+Certaines fonctionnalités dépendent des entités exposées par votre modèle de Freebox et la version de l’intégration. Les options non disponibles sont automatiquement désactivées dans le configurateur et les actions correspondantes ne sont pas affichées sur la carte.
 
 ## 📦 Installation
 
@@ -96,6 +96,20 @@ ou
 4. Sélectionnez la Freebox détectée et configurez la carte depuis l’éditeur visuel.
 
 La carte essaie de sélectionner automatiquement la Freebox en recherchant une entité `device_tracker.freebox` associée à un appareil dont le nom, le modèle ou le fabricant contient `Freebox`.
+
+## 📶 Contrôles Wi-Fi et redémarrage
+
+Les boutons **Wi-Fi** et **Redémarrer** permettent de contrôler directement votre Freebox depuis la carte.
+
+Pour éviter toute action accidentelle, une confirmation est demandée avant de modifier l’état du Wi-Fi ou de redémarrer la Freebox.
+
+Pour que ces contrôles fonctionnent, l’intégration Freebox doit disposer de la permission **« Modification des réglages de la Freebox »**.
+
+Activez cette permission dans Freebox OS :
+
+**Paramètres de la Freebox → Gestion des accès → Applications → Home Assistant → Modification des réglages de la Freebox**
+
+Consultez la [documentation officielle de l’intégration Freebox](https://www.home-assistant.io/integrations/freebox) pour plus d’informations.
 
 ## ⚙️ Configuration
 
@@ -140,6 +154,8 @@ section_order:
 ## 📈 Graphiques d’historique
 
 La section **Bande passante** inclut deux graphiques : l’historique des débits descendant et montant, ainsi que l’historique de la latence et de la perte de paquets.
+
+Les valeurs de bande passante sont automatiquement normalisées quelle que soit l’unité configurée dans Home Assistant. Les mesures en temps réel sont affichées en Mbit/s ou Gbit/s, tandis que les graphiques d’historique utilisent Mbit/s.
 
 Les graphiques :
 
