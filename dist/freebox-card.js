@@ -115,6 +115,11 @@ const TRANSLATIONS = {
 			show_storage_raid: "Show Storage & RAID",
 			show_fans: "Show fans",
 			show_temperatures: "Show temperatures",
+			unsupported_wifi: "No Wi-Fi switch is available for this Freebox.",
+			unsupported_reboot: "No reboot button is available for this Freebox.",
+			unsupported_storage_raid: "No storage or RAID sensor is available for this Freebox.",
+			unsupported_fans: "No fan sensor is available for this Freebox.",
+			unsupported_temperatures: "No temperature sensor is available for this Freebox.",
 			show_connected_tile: "Show Connected tile",
 			show_disconnected_tile: "Show Disconnected tile",
 			show_disabled_tile: "Show Disabled tile",
@@ -227,6 +232,11 @@ const TRANSLATIONS = {
 			show_storage_raid: "Afficher le stockage et le RAID",
 			show_fans: "Afficher les ventilateurs",
 			show_temperatures: "Afficher les températures",
+			unsupported_wifi: "Aucun interrupteur Wi-Fi n’est disponible pour cette Freebox.",
+			unsupported_reboot: "Aucun bouton de redémarrage n’est disponible pour cette Freebox.",
+			unsupported_storage_raid: "Aucun capteur de stockage ou RAID n’est disponible pour cette Freebox.",
+			unsupported_fans: "Aucun capteur de ventilateur n’est disponible pour cette Freebox.",
+			unsupported_temperatures: "Aucun capteur de température n’est disponible pour cette Freebox.",
 			show_connected_tile: "Afficher la tuile Connectés",
 			show_disconnected_tile: "Afficher la tuile Déconnectés",
 			show_disabled_tile: "Afficher la tuile Désactivés",
@@ -1621,6 +1631,12 @@ class FreeboxCard extends HTMLElement {
 	}
 
 	_systemInfoSection(e, info) {
+		const entityAvailable = (entityId) => {
+			const state = entityId ? this._hass.states[entityId] : undefined;
+			return Boolean(state && !["unknown", "unavailable"].includes(state.state));
+		};
+		const wifiAvailable = entityAvailable(e.wifi);
+		const rebootAvailable = entityAvailable(e.reboot);
 		const wanState = e.wanStatus ? this._hass.states[e.wanStatus]?.state : undefined;
 		const normalizedWanState = String(wanState || "").trim().toLowerCase();
 		const wanOnline = ["connected", "on", "online", "home", "up", "ok", "true", "1", "connecté", "connecte", "en ligne"].includes(normalizedWanState);
@@ -1643,8 +1659,8 @@ class FreeboxCard extends HTMLElement {
 
 		const systemActions = `<span class="system-actions">
 			${this._config.show_admin_console_button !== false ? `<a class="system-action admin-console-action" href="${this._escape(this._getAdminConsoleUrl())}" target="_blank" rel="noopener noreferrer" title="${this._t("admin_console")}" aria-label="${this._t("admin_console")}"><ha-icon icon="mdi:monitor-dashboard"></ha-icon></a>` : ""}
-			${this._config.show_wifi_button !== false && e.wifi ? `<button type="button" class="system-action wifi ${this._hass.states[e.wifi]?.state === "on" ? "active" : ""}" data-action="wifi" data-entity="${this._escape(e.wifi)}" title="${this._t("wifi")}" aria-label="${this._t("wifi")}"><ha-icon icon="${this._hass.states[e.wifi]?.state === "on" ? "mdi:wifi" : "mdi:wifi-off"}"></ha-icon></button>` : ""}
-			${this._config.show_reboot_button !== false && e.reboot ? `<button type="button" class="system-action reboot-action" data-action="reboot" data-entity="${this._escape(e.reboot)}" title="${this._t("reboot")}" aria-label="${this._t("reboot")}"><ha-icon icon="mdi:restart"></ha-icon></button>` : ""}
+			${this._config.show_wifi_button !== false && wifiAvailable ? `<button type="button" class="system-action wifi ${this._hass.states[e.wifi]?.state === "on" ? "active" : ""}" data-action="wifi" data-entity="${this._escape(e.wifi)}" title="${this._t("wifi")}" aria-label="${this._t("wifi")}"><ha-icon icon="${this._hass.states[e.wifi]?.state === "on" ? "mdi:wifi" : "mdi:wifi-off"}"></ha-icon></button>` : ""}
+			${this._config.show_reboot_button !== false && rebootAvailable ? `<button type="button" class="system-action reboot-action" data-action="reboot" data-entity="${this._escape(e.reboot)}" title="${this._t("reboot")}" aria-label="${this._t("reboot")}"><ha-icon icon="mdi:restart"></ha-icon></button>` : ""}
 		</span>`;
 		return `<section class="panel detail-panel system-info-panel" data-section-key="system">
 			<div class="section-title system-title"><span><ha-icon icon="mdi:server"></ha-icon>${this._t("system")}</span>${systemActions}</div>
@@ -2306,12 +2322,30 @@ class FreeboxCardEditor extends HTMLElement {
 		return `<div class="field entity-override"><span>${label}</span><ha-entity-picker data-config="${key}" data-filter="${filter}"></ha-entity-picker></div>`;
 	}
 
-	_switchRow(key, label) {
-		return `
-		<div class="switch-row">
-		  <span class="switch-label">${label}</span>
-		  <ha-switch data-config="${key}"></ha-switch>
-		</div>`;
+	_switchRow(key, label, capability = "") {
+		const messageKey = capability ? `unsupported_${capability}` : "";
+		return `<div class="switch-option"${capability ? ` data-capability-option="${capability}"` : ""}><div class="switch-row"><span class="switch-label">${label}</span><ha-switch data-config="${key}"></ha-switch></div>${messageKey ? `<div class="capability-message" hidden>${this._et(messageKey)}</div>` : ""}</div>`;
+	}
+
+	_getCapabilitySupport() {
+		if (!this._hass || !this._config) return { wifi:false, reboot:false, storage_raid:false, fans:false, temperatures:false };
+		const resolver = Object.create(FreeboxCard.prototype);
+		resolver._hass = this._hass;
+		resolver._config = { ...FreeboxCard.FIELD_DEFAULTS, ...this._config };
+		resolver._deviceRegistry = [];
+		resolver._entityRegistry = [];
+		const entities = resolver._resolveEntities();
+		const available = (id) => { const state=this._hass.states?.[id]?.state; return Boolean(state && !["unknown","unavailable"].includes(state)); };
+		return {
+			wifi: available(entities.wifi), reboot: available(entities.reboot),
+			storage_raid: [...(entities.hardwareStorage||[]), ...(entities.hardwareRaid||[])].some(available),
+			fans: (entities.hardwareFans||[]).some(available), temperatures: (entities.hardwareTemperatures||[]).some(available),
+		};
+	}
+
+	_updateCapabilityOptions() {
+		const support=this._getCapabilitySupport();
+		this.querySelectorAll("[data-capability-option]").forEach((option)=>{ const supported=support[option.dataset.capabilityOption]===true; const toggle=option.querySelector("ha-switch"); const message=option.querySelector(".capability-message"); if(toggle){ toggle.disabled=!supported; toggle.setAttribute("aria-disabled",String(!supported)); } option.classList.toggle("unsupported",!supported); if(message) message.hidden=supported; });
 	}
 
 	_getSectionDefinitions() {
@@ -2352,9 +2386,9 @@ class FreeboxCardEditor extends HTMLElement {
 					</div>
 				</div>`
 				: key === "system"
-					? `<div class="section-suboptions">${this._switchRow("show_admin_console_button", this._et("show_admin_console_button"))}<label>${this._et("admin_console_ip")}<input data-config="admin_console_ip" type="text" inputmode="decimal" autocomplete="off" placeholder="mafreebox.freebox.fr"></label>${this._switchRow("show_wifi_button", this._et("show_wifi_button"))}${this._switchRow("show_reboot_button", this._et("show_reboot_button"))}</div>`
+					? `<div class="section-suboptions">${this._switchRow("show_admin_console_button", this._et("show_admin_console_button"))}<label>${this._et("admin_console_ip")}<input data-config="admin_console_ip" type="text" inputmode="decimal" autocomplete="off" placeholder="mafreebox.freebox.fr"></label>${this._switchRow("show_wifi_button", this._et("show_wifi_button"), "wifi")}${this._switchRow("show_reboot_button", this._et("show_reboot_button"), "reboot")}</div>`
 				: key === "hardware"
-					? `<div class="section-suboptions"><div class="option-group-content">${this._switchRow("show_storage_raid", this._et("show_storage_raid"))}${this._switchRow("show_fans", this._et("show_fans"))}${this._switchRow("show_temperatures", this._et("show_temperatures"))}</div></div>`
+					? `<div class="section-suboptions"><div class="option-group-content">${this._switchRow("show_storage_raid", this._et("show_storage_raid"), "storage_raid")}${this._switchRow("show_fans", this._et("show_fans"), "fans")}${this._switchRow("show_temperatures", this._et("show_temperatures"), "temperatures")}</div></div>`
 					: key === "devices"
 						? `<div class="section-suboptions"><div class="option-group-content">${this._switchRow("show_connected_tile", this._et("show_connected_tile"))}${this._switchRow("show_disconnected_tile", this._et("show_disconnected_tile"))}${this._switchRow("show_disabled_tile", this._et("show_disabled_tile"))}${this._switchRow("show_total_tile", this._et("show_total_tile"))}${this._switchRow("show_connected_devices_list", this._et("show_connected_devices_list"))}${this._switchRow("show_disconnected_devices_list", this._et("show_disconnected_devices_list"))}</div></div>`
 						: "";
@@ -2381,7 +2415,10 @@ class FreeboxCardEditor extends HTMLElement {
 			input { box-sizing:border-box; width:100%; min-height:42px; padding:8px 10px; color:var(--primary-text-color); background:var(--ha-card-background,var(--card-background-color)); border:1px solid var(--divider-color); border-radius:8px; font:inherit; }
 			ha-selector { display:block; width:100%; }
 			.switch-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); column-gap:24px; }
+			.switch-option { display:grid; gap:2px; }
 			.switch-row { display:flex; align-items:center; justify-content:space-between; gap:16px; min-height:42px; }
+			.switch-option.unsupported .switch-label { color:var(--disabled-text-color,var(--secondary-text-color)); opacity:.65; }
+			.capability-message { margin:-4px 48px 6px 0; color:var(--secondary-text-color); font-size:11px; line-height:1.35; }
 			.switch-label { color:var(--primary-text-color); font-size:14px; }
 			.section-order-list { display:grid; gap:8px; }
 			.section-order-item { display:grid; overflow:hidden; border:1px solid var(--divider-color); border-radius:10px; background:var(--ha-card-background,var(--card-background-color)); transition:border-color .16s ease, opacity .16s ease, transform .16s ease; }
@@ -2651,14 +2688,14 @@ class FreeboxCardEditor extends HTMLElement {
 			if (FreeboxCardEditor._getDeepActiveElement() !== element)
 				element.value = value ?? "";
 		});
+		this._updateCapabilityOptions();
 	}
-
 	_valueChanged(event) {
 		if (!this._config)
 			return;
 		const target = event.currentTarget;
 		const key = target?.dataset?.config;
-		if (!key)
+		if (!key || target.disabled)
 			return;
 		let value;
 		if (target.tagName === "HA-SELECTOR" || target.tagName === "HA-ENTITY-PICKER") {
