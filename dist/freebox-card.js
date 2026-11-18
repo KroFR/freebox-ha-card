@@ -394,7 +394,7 @@ class FreeboxCard extends HTMLElement {
 		const states = [...entityIds].sort().map((entityId) => {
 			const state = hass.states?.[entityId];
 			if (!state) return [entityId, null];
-			return [entityId, state.state, state.last_changed, state.last_updated];
+			return [entityId, state.state, state.last_changed, state.last_updated, state.attributes?.unit_of_measurement || ""];
 		});
 		return JSON.stringify({
 			deviceId: this._getSelectedDeviceId(),
@@ -1248,28 +1248,36 @@ class FreeboxCard extends HTMLElement {
 		overlay.addEventListener("pointerleave",hide);
 	}
 
-	_formatSpeed(entityId) {
-		const state = this._hass.states[entityId];
-		const raw = Number.parseFloat(state?.state);
-		if (!Number.isFinite(raw))
-			return this._t("unavailable");
+	_normalizeBandwidthToBits(value, unit) {
+		const numericValue = Number.parseFloat(value);
+		if (!Number.isFinite(numericValue)) return null;
+		const factors = {
+			"bit/s": 1, "kbit/s": 1_000, "Mbit/s": 1_000_000, "Gbit/s": 1_000_000_000,
+			"B/s": 8, "kB/s": 8_000, "MB/s": 8_000_000, "GB/s": 8_000_000_000,
+			"KiB/s": 8_192, "MiB/s": 8_388_608,
+		};
+		const factor = factors[String(unit || "").trim()];
+		return factor === undefined ? null : Math.max(0, numericValue * factor);
+	}
 
-		const unit = state.attributes.unit_of_measurement || "Mbit/s";
-		if (/gb/i.test(unit))
-			return `${raw.toFixed(2)} Gb/s`;
-		if (/kb/i.test(unit))
-			return `${(raw / 1000).toFixed(2)} Mbit/s`;
-		if (raw >= 1000)
-			return `${(raw / 1000).toFixed(2)} Gb/s`;
-		return `${raw.toFixed(2)} Mbit/s`;
+	_getBandwidthBits(entityId) {
+		const state = this._hass?.states?.[entityId];
+		return this._normalizeBandwidthToBits(state?.state, state?.attributes?.unit_of_measurement);
+	}
+
+	_formatSpeed(entityId) {
+		const bitsPerSecond = this._getBandwidthBits(entityId);
+		if (!Number.isFinite(bitsPerSecond)) return this._t("unavailable");
+		if (bitsPerSecond >= 1_000_000_000)
+			return `${(bitsPerSecond / 1_000_000_000).toFixed(2)} Gbit/s`;
+		return `${(bitsPerSecond / 1_000_000).toFixed(2)} Mbit/s`;
 	}
 
 	_speedMetric(entityId, type) {
 		if (!entityId)
 			return "";
-		const state = this._hass.states[entityId];
-		const raw = Number.parseFloat(state?.state);
-		const speed = Number.isFinite(raw) ? Math.max(0, raw) : 0;
+		const bitsPerSecond = this._getBandwidthBits(entityId);
+		const speed = Number.isFinite(bitsPerSecond) ? bitsPerSecond / 1_000_000 : 0;
 		const configuredMaximum = Number.parseFloat(
 			type === "download" ? this._config?.download_bandwidth : this._config?.upload_bandwidth
 		);
@@ -1337,23 +1345,29 @@ class FreeboxCard extends HTMLElement {
 	}
 
 
-	_normalizeBandwidthHistory(history, entityId) {
+	_normalizeHistory(history, entityId, valueNormalizer = (value) => value) {
 		const rawSeries = this._getHistorySeries(history, entityId);
 		const parsed = [];
-		let rejected = 0;
 		for (const item of rawSeries) {
 			const rawValue = Number.parseFloat(item?.state ?? item?.s);
 			const rawTimestamp = item?.last_updated ?? item?.last_changed ?? item?.lu ?? item?.lc;
 			let timestamp;
 			if (typeof rawTimestamp === "number") timestamp = rawTimestamp < 100000000000 ? rawTimestamp * 1000 : rawTimestamp;
 			else timestamp = Date.parse(rawTimestamp);
-			if (!Number.isFinite(rawValue) || !Number.isFinite(timestamp)) {
-				rejected += 1;
-				continue;
-			}
-			parsed.push({ timestamp, value: Math.max(0, rawValue) });
+			const value = valueNormalizer(rawValue, item);
+			if (!Number.isFinite(value) || !Number.isFinite(timestamp)) continue;
+			parsed.push({ timestamp, value: Math.max(0, value) });
 		}
 		return parsed.sort((x, y) => x.timestamp - y.timestamp);
+	}
+
+	_normalizeBandwidthHistory(history, entityId) {
+		const currentUnit = this._hass?.states?.[entityId]?.attributes?.unit_of_measurement;
+		return this._normalizeHistory(history, entityId, (rawValue, item) => {
+			const historicalUnit = item?.attributes?.unit_of_measurement ?? item?.a?.unit_of_measurement;
+			const bitsPerSecond = this._normalizeBandwidthToBits(rawValue, historicalUnit || currentUnit);
+			return Number.isFinite(bitsPerSecond) ? bitsPerSecond / 1_000_000 : null;
+		});
 	}
 
 	async _loadBandwidthHistory(downloadEntity, uploadEntity) {
@@ -1401,7 +1415,7 @@ class FreeboxCard extends HTMLElement {
 			const start = new Date(end.getTime() - hours * 3600000);
 			const query = new URLSearchParams({ filter_entity_id: entityIds.join(","), end_time: end.toISOString(), significant_changes_only: "0" });
 			const history = await this._hass.callApi("GET", `history/period/${start.toISOString()}?${query.toString()}`);
-			const series = Object.fromEntries(entityIds.map((id) => [id, this._normalizeBandwidthHistory(history, id)]));
+			const series = Object.fromEntries(entityIds.map((id) => [id, this._normalizeHistory(history, id)]));
 			this._networkQualityHistory = { key, loadedAt: Date.now(), loading: false, series };
 		} catch (error) {
 			console.error("[freebox-card][network-history] Unable to load history", error);
