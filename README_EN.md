@@ -59,7 +59,7 @@ A responsive Lovelace card for [Home Assistant](https://www.home-assistant.io/) 
 - A Freebox device with a `device_tracker.freebox` or `device_tracker.freebox_*` entity
 - Optional: [Ping (ICMP)](https://www.home-assistant.io/integrations/ping) integration configured for automatic latency detection and display
 
-Some sections appear only when the required entities are available. Hardware and telephony content depends on the entities exposed by your Freebox model and integration version.
+Some features depend on the entities exposed by your Freebox model and integration version. Unavailable options are automatically disabled in the visual editor, and their corresponding actions are not displayed on the card..
 
 ## 📦 Installation
 
@@ -96,6 +96,20 @@ or
 4. Select the detected Freebox device and configure the card through the visual editor.
 
 The card attempts to select the Freebox automatically by locating a `device_tracker.freebox` entity associated with a device whose name, model, or manufacturer contains `Freebox`.
+
+## 📶 Wi-Fi and reboot controls
+
+The **Wi-Fi** and **Reboot** buttons let you control your Freebox directly from the card.
+
+To prevent accidental actions, confirmation is required before changing the Wi-Fi state or rebooting the Freebox.
+
+For these controls to work, the Freebox integration must have the **“Modification des réglages de la Freebox”** permission enabled.
+
+Enable this permission in Freebox OS:
+
+**Paramètres de la Freebox → Gestion des accès → Applications → Home Assistant → Modification des réglages de la Freebox**
+
+See the [official Freebox integration documentation](https://www.home-assistant.io/integrations/freebox) for more information.
 
 ## ⚙️ Configuration
 
@@ -140,6 +154,8 @@ section_order:
 ## 📈 History charts
 
 The **Bandwidth** section includes two charts: download and upload history, plus latency and packet loss history.
+
+Bandwidth values are automatically normalized regardless of the unit configured in Home Assistant. Real-time metrics are displayed in Mbit/s or Gbit/s, while history charts use Mbit/s.
 
 The charts:
 
