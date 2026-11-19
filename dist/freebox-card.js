@@ -5,7 +5,7 @@
  *
  * License: MIT
  */
-const CARD_VERSION = "2026.11.5";
+const CARD_VERSION = "2026.11.6";
 
 /* ---------------------------------------------------------------------- */
 /*  Languages                                                             */
@@ -95,6 +95,9 @@ const TRANSLATIONS = {
 			history_settings: "History",
 			general: "General",
 			card_layout: "Card layout",
+			layout_mode: "Layout mode",
+			layout_standard: "Standard",
+			layout_single: "Single section",
 			show_header: "Show card icon and title",
 			show_card_background: "Show card background",
 			show_wifi_button: "Show Wi-Fi button",
@@ -212,6 +215,9 @@ const TRANSLATIONS = {
 			history_settings: "Historique",
 			general: "Général",
 			card_layout: "Disposition de la carte",
+			layout_mode: "Mode d’affichage",
+			layout_standard: "Standard",
+			layout_single: "Section unique",
 			show_header: "Afficher l’icône et le titre de la carte",
 			show_card_background: "Afficher le fond de la carte",
 			show_wifi_button: "Afficher le bouton Wi-Fi",
@@ -300,6 +306,7 @@ class FreeboxCard extends HTMLElement {
 	static FIELD_DEFAULTS = {
 		name: "",
 		language: "auto",
+		layout: "standard",
 		section_order: ["internet", "system", "hardware", "telephony", "devices", "debug"],
 		show_internet: true,
 		show_system: true,
@@ -354,6 +361,11 @@ class FreeboxCard extends HTMLElement {
 		this._collapsedSectionsLoaded = false;
 		this._collapsedSectionsLoading = false;
 		this._unsubscribeCollapsedSections = null;
+		this._activeSection = "";
+		this._activeSectionStorageKey = "";
+		this._activeSectionLoaded = false;
+		this._activeSectionLoading = false;
+		this._unsubscribeActiveSection = null;
 		this._lastLocalePreferences = "";
 		this._sharedHistoryTicks = null;
 		this._sharedHistoryWindow = null;
@@ -362,13 +374,14 @@ class FreeboxCard extends HTMLElement {
 	setConfig(config) {
 		const source = config && typeof config === "object" ? config : {};
 		const safeConfig = {};
-		const stringFields = ["name", "device_id", "latency_entity", "packet_loss_entity", "download_bandwidth", "upload_bandwidth", "history_hours", "admin_console_ip"];
+		const stringFields = ["name", "device_id", "layout", "latency_entity", "packet_loss_entity", "download_bandwidth", "upload_bandwidth", "history_hours", "admin_console_ip"];
 		const booleanFields = ["show_internet", "show_system", "show_hardware", "show_storage_raid", "show_fans", "show_temperatures", "show_telephony", "show_devices", "show_connected_tile", "show_disconnected_tile", "show_disabled_tile", "show_total_tile", "show_connected_devices_list", "show_disconnected_devices_list", "show_debug", "show_header", "show_card_background", "show_wifi_button", "show_reboot_button", "show_admin_console_button", "show_bandwidth_history", "show_network_quality_history", "show_live_metrics", "show_history_maximums"];
 		for (const key of stringFields)
 			if (typeof source[key] === "string") safeConfig[key] = source[key].slice(0, 512);
 		for (const key of booleanFields)
 			if (typeof source[key] === "boolean") safeConfig[key] = source[key];
 		if (source.language === "auto" || TRANSLATIONS[source.language]) safeConfig.language = source.language;
+		if (["standard", "single"].includes(source.layout)) safeConfig.layout = source.layout;
 		const allowedSections = new Set(FreeboxCard.FIELD_DEFAULTS.section_order);
 		if (Array.isArray(source.section_order))
 			safeConfig.section_order = [...new Set(source.section_order.filter((key) => allowedSections.has(key)))];
@@ -381,6 +394,7 @@ class FreeboxCard extends HTMLElement {
 		this._hass = hass;
 		this._loadRegistries();
 		this._ensureCollapsedSectionsStorage();
+		this._ensureActiveSectionStorage();
 		const localePreferences = JSON.stringify({
 			language: hass.locale?.language || hass.language || "",
 			timeFormat: hass.locale?.time_format || "",
@@ -419,6 +433,8 @@ class FreeboxCard extends HTMLElement {
 	disconnectedCallback() {
 		if (typeof this._unsubscribeCollapsedSections === "function") this._unsubscribeCollapsedSections();
 		this._unsubscribeCollapsedSections = null;
+		if (typeof this._unsubscribeActiveSection === "function") this._unsubscribeActiveSection();
+		this._unsubscribeActiveSection = null;
 		this._historyAxisObserver?.disconnect();
 		this._networkAxisObserver?.disconnect();
 	}
@@ -496,6 +512,67 @@ class FreeboxCard extends HTMLElement {
 		} catch (error) {
 			console.warn("[freebox-card] Unable to save collapsible section preferences", error);
 		}
+	}
+
+	_getActiveSectionStorageKey() {
+		const deviceId = this._getSelectedDeviceId() || "auto";
+		if (!this._stableCollapsedSectionsIdentity)
+			this._stableCollapsedSectionsIdentity = this._getCardPositionIdentity();
+		return `freebox-card:active-section:${deviceId}:${this._stableCollapsedSectionsIdentity}`;
+	}
+	_normalizeActiveSection(value) {
+		const allowed = new Set(["internet", "system", "hardware", "telephony", "devices", "debug"]);
+		const section = typeof value === "string" ? value : value?.section;
+		return allowed.has(section) ? section : "";
+	}
+	async _ensureActiveSectionStorage() {
+		if (!this._hass?.connection || !this._config || this._config.layout !== "single" || this._activeSectionLoading) return;
+		const key = this._getActiveSectionStorageKey();
+		if (key === this._activeSectionStorageKey && this._activeSectionLoaded) return;
+		this._activeSectionLoading = true;
+		if (typeof this._unsubscribeActiveSection === "function") this._unsubscribeActiveSection();
+		this._unsubscribeActiveSection = null;
+		this._activeSectionStorageKey = key;
+		try {
+			const response = await this._hass.connection.sendMessagePromise({ type: "frontend/get_user_data", key });
+			this._activeSection = this._normalizeActiveSection(response?.value ?? response);
+			this._activeSectionLoaded = true;
+			this._render();
+			this._unsubscribeActiveSection = await this._hass.connection.subscribeMessage((message) => {
+				const next = this._normalizeActiveSection(message?.value ?? message);
+				if (!next || next === this._activeSection) return;
+				this._activeSection = next;
+				this._render();
+			}, { type: "frontend/subscribe_user_data", key });
+		} catch (error) {
+			console.warn("[freebox-card] Unable to load active section preference", error);
+			this._activeSectionLoaded = true;
+		} finally {
+			this._activeSectionLoading = false;
+		}
+	}
+	async _saveActiveSection() {
+		if (!this._hass?.connection || !this._activeSectionStorageKey || !this._activeSection) return;
+		try {
+			await this._hass.connection.sendMessagePromise({ type: "frontend/set_user_data", key: this._activeSectionStorageKey, value: this._activeSection });
+		} catch (error) {
+			console.warn("[freebox-card] Unable to save active section preference", error);
+		}
+	}
+	_initializeSectionNavigation() {
+		const navigation = this.shadowRoot.querySelector(".section-navigation");
+		if (!navigation) return;
+		navigation.querySelectorAll("[data-section-navigation]").forEach((button) => {
+			button.addEventListener("click", () => {
+				const section = this._normalizeActiveSection(button.dataset.sectionNavigation);
+				if (!section || section === this._activeSection) return;
+				this._activeSection = section;
+				this._saveActiveSection();
+				if (navigation.scrollWidth > navigation.clientWidth + 2)
+					button.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+				this._render();
+			});
+		});
 	}
 
 	_initializeCollapsibleSections() {
@@ -1039,6 +1116,7 @@ class FreeboxCard extends HTMLElement {
 			this._trackerListsOpen[element.dataset.trackerList] = element.open;
 		});
 
+
 		this._sharedHistoryWindow = null;
 		this._sharedHistoryTicks = null;
 		const e = this._hass ? this._resolveEntities() : {};
@@ -1063,6 +1141,16 @@ class FreeboxCard extends HTMLElement {
 			devices: () => this._config.show_devices && trackerStats.total ? this._deviceTrackersSection(trackerStats, trackerData.connectedNames, trackerData.awayNames) : "",
 			debug: () => this._config.show_debug ? this._debugSection(integrationEntities, integrationDevices) : "",
 		};
+		const sectionIcons = { internet: "mdi:speedometer", system: "mdi:server", hardware: "mdi:memory", telephony: "mdi:phone", devices: "mdi:devices", debug: "mdi:bug-outline" };
+		const renderedSections = Object.fromEntries(sectionOrder.map((key) => [key, sections[key]()]));
+		const availableSections = sectionOrder.filter((key) => renderedSections[key]);
+		const singleLayout = this._config.layout === "single";
+		const activeSection = availableSections.includes(this._activeSection) ? this._activeSection : (availableSections[0] || "");
+		if (singleLayout && activeSection && activeSection !== this._activeSection) this._activeSection = activeSection;
+		const sectionNavigation = singleLayout && availableSections.length > 1
+			? `<nav class="section-navigation" aria-label="Sections" style="--section-count:${availableSections.length}">${availableSections.map((key) => `<button type="button" class="section-navigation-item section-navigation-${key}${key === activeSection ? " active" : ""}" data-section-navigation="${key}" aria-pressed="${key === activeSection}" title="${this._escape(this._t(key === "devices" ? "device_trackers" : key))}"><ha-icon icon="${sectionIcons[key]}"></ha-icon><span>${this._t(key === "devices" ? "device_trackers" : key)}</span></button>`).join("")}</nav>`
+			: "";
+		const sectionContent = singleLayout ? (renderedSections[activeSection] || "") : availableSections.map((key) => renderedSections[key]).join("");
 
 		this.shadowRoot.innerHTML = `
 			<style>${this._styles()}</style>
@@ -1070,8 +1158,9 @@ class FreeboxCard extends HTMLElement {
 				${this._config.show_header ? `<header><div class="brand-icon"><ha-icon icon="mdi:router-wireless"></ha-icon></div><h2>${this._escape(this._config.name || this._t("name"))}</h2></header>` : ""}
 				${!selectedDeviceId && !entities.length ? `<div class="empty"><ha-icon icon="mdi:router-wireless-settings"></ha-icon>${this._t("no_device")}</div>` : ""}
 				${selectedDeviceId && !entities.length ? `<div class="empty"><ha-icon icon="mdi:alert-circle-outline"></ha-icon>${this._t("no_entities")}</div>` : ""}
-				<div class="content">${sectionOrder.map((key) => sections[key]()).join("")}</div>
+				${singleLayout && this._config.show_card_background !== false ? sectionNavigation : ""}<div class="content${singleLayout ? " single-section-content" : ""}">${singleLayout && this._config.show_card_background === false && sectionNavigation ? `<div class="single-section-panel-shell">${sectionNavigation}<div class="single-section-panel-content">${sectionContent}</div></div>` : sectionContent}</div>
 			</ha-card>`;
+
 
 		this.shadowRoot.querySelectorAll("[data-action]").forEach((element) => {
 			element.addEventListener("click", (event) => this._handleClick(event));
@@ -1108,7 +1197,8 @@ class FreeboxCard extends HTMLElement {
 				this._trackerListsOpen[element.dataset.trackerList] = element.open;
 			});
 		});
-		this._initializeCollapsibleSections();
+		this._initializeSectionNavigation();
+		if (!singleLayout) this._initializeCollapsibleSections();
 		this._initializeBandwidthHistoryTooltip();
 		this._initializeBandwidthHistoryAxis();
 		this._initializeNetworkQualityChart();
@@ -1971,7 +2061,7 @@ class FreeboxCard extends HTMLElement {
 			ha-card.dark-theme.no-card-background .connected-devices-list,
 			ha-card.dark-theme.no-card-background .debug-group { background:color-mix(in srgb, var(--secondary-background-color) 72%, transparent); }
 			header { display:flex; align-items:center; gap:10px; margin-bottom:20px; }
-			.brand-icon { display:flex; align-items:center; justify-content:center; width:44px; height:44px; flex:0 0 44px; border:1px solid var(--divider-color); border-radius:14px; color:var(--freebox-accent); background:rgba(128,128,128,.08); }
+			.brand-icon { display:flex; align-items:center; justify-content:center; width:44apx; height:44px; flex:0 0 44px; border:1px solid var(--divider-color); border-radius:14px; color:var(--freebox-accent); background:rgba(128,128,128,.08); }
 			.brand-icon ha-icon { --mdc-icon-size:24px; }
 			h2 { flex:1; min-width:0; margin:0; overflow:hidden; text-overflow:ellipsis; font-size:1.2em; font-weight:600; line-height:1.2; white-space:nowrap; }
 			.system-title { justify-content:space-between; }
@@ -1984,6 +2074,25 @@ class FreeboxCard extends HTMLElement {
 			.system-action.wifi:not(.active) { color:#8a8a8a; border-color:var(--divider-color); background:rgba(128,128,128,.08); }
 			.system-action.reboot-action { color:var(--freebox-accent); }
 			.content { display:grid; gap:12px; }
+			.section-navigation { display:flex; gap:2px; min-width:0; overflow-x:auto; scrollbar-width:none; margin:0 0 12px; padding:0 2px 6px; border-bottom:1px solid var(--divider-color); }
+			.section-navigation::-webkit-scrollbar { display:none; }
+			.section-navigation-item { position:relative; display:flex; flex:1 0 max-content; align-items:center; justify-content:center; gap:5px; min-width:max-content; min-height:34px; padding:5px 5px 8px; overflow:hidden; border:0; border-radius:8px 8px 0 0; color:var(--secondary-text-color); background:transparent; font:inherit; font-size:11px; font-weight:600; white-space:nowrap; }
+			.section-navigation-item ha-icon { --mdc-icon-size:16px; flex:0 0 16px; }
+			.section-navigation-item span { min-width:0; overflow:visible; text-overflow:clip; white-space:nowrap; }
+			.section-navigation-item.active { color:var(--freebox-accent); }
+			.section-navigation-item.active::after { content:""; position:absolute; left:6px; right:6px; bottom:-7px; height:2px; border-radius:2px; background:var(--freebox-accent); }
+			ha-card.no-card-background .single-section-panel-shell { overflow:hidden; border:1px solid var(--divider-color); border-radius:16px; background:var(--ha-card-background,var(--card-background-color)); }
+			ha-card.no-card-background .single-section-panel-shell { padding-top:7px; }
+			ha-card.no-card-background .single-section-panel-shell > .section-navigation { margin:0; padding:0 2px 6px; background:var(--ha-card-background,var(--card-background-color)); }
+			ha-card.no-card-background .single-section-panel-content > .panel { border:0; border-radius:0; background:transparent; }
+			.single-section-content .panel > .section-title { cursor:default; }
+			@container (max-width:420px) {
+				.section-navigation { display:flex; gap:4px; overflow-x:auto; scroll-snap-type:x proximity; scrollbar-width:none; }
+				.section-navigation::-webkit-scrollbar { display:none; }
+				.section-navigation-item, .section-navigation-item.active { flex:0 0 auto; flex-basis:auto; justify-content:flex-start; min-width:0; padding-left:9px; padding-right:9px; scroll-snap-align:nearest; }
+				.section-navigation-item span, .section-navigation-item.active span { overflow:visible; text-overflow:clip; }
+			}
+
 			.panel { border:1px solid var(--divider-color); border-radius:16px; background:color-mix(in srgb, var(--secondary-background-color) 72%, transparent); }
 			.internet-panel, .detail-panel { padding:15px; }
 			.section-title { display:flex; align-items:center; gap:8px; margin-bottom:13px; color:var(--secondary-text-color); font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
@@ -2472,7 +2581,7 @@ class FreeboxCardEditor extends HTMLElement {
 			<details class="section">
 				${this._sectionSummary(FreeboxCardEditor.SECTION_ICONS.layout, this._et("card_layout"))}
 				<div class="section-content">
-					<div class="layout-options">${this._switchRow("show_header", this._et("show_header"))}${this._switchRow("show_card_background", this._et("show_card_background"))}</div>
+					<div class="field"><span>${this._et("layout_mode")}</span><ha-selector data-config="layout"></ha-selector></div><div class="layout-options">${this._switchRow("show_header", this._et("show_header"))}${this._switchRow("show_card_background", this._et("show_card_background"))}</div>
 					<div class="section-order-list">${this._renderSectionOrder()}</div>
 				</div>
 			</details>
@@ -2524,7 +2633,12 @@ class FreeboxCardEditor extends HTMLElement {
 			selector.hass = this._hass;
 			if (key === "device_id") {
 				selector.selector = { device: { filter: { integration: "freebox" } } };
-			} else if (key === "language") {
+			} else if (key === "layout") {
+				selector.selector = { select: { mode: "dropdown", options: [
+					{ value: "standard", label: this._et("layout_standard") },
+					{ value: "single", label: this._et("layout_single") },
+				] } };
+			} else if (key === "language" || key === "layout") {
 				selector.selector = { select: { mode: "dropdown", options: [
 					{ value: "auto", label: this._et("auto") },
 					...Object.entries(TRANSLATIONS).map(([code, language]) => ({ value: code, label: language.meta?.name || code })),
