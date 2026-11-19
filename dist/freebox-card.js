@@ -5,7 +5,8 @@
  *
  * License: MIT
  */
-const CARD_VERSION = "2026.11.6-1";
+
+const CARD_VERSION = "2026.11.6-2";
 
 /* ---------------------------------------------------------------------- */
 /*  Languages                                                             */
@@ -1751,8 +1752,10 @@ class FreeboxCard extends HTMLElement {
 		return `<div class="compact-status-item"${attributes}><div class="compact-status-content"><ha-icon icon="${icon}"></ha-icon><span>${this._escape(label)}</span><strong>${this._escape(value)}</strong></div></div>`;
 	}
 	_compactLayout(e, info, trackerStats) {
-		if (this._config.show_live_metrics !== false) setTimeout(() => this._loadBandwidthHistory(e.download, e.upload), 0);
-		if (this._config.show_network_quality_history !== false) setTimeout(() => this._loadNetworkQualityHistory(e.latency, e.packetLoss), 0);
+		if (this._hass && this._config.show_live_metrics !== false && (e.download || e.upload))
+			setTimeout(() => this._loadBandwidthHistory(e.download, e.upload), 0);
+		if (this._hass && this._config.show_network_quality_history !== false && (e.latency || e.packetLoss))
+			setTimeout(() => this._loadNetworkQualityHistory(e.latency, e.packetLoss), 0);
 		const downloadSeries = this._bandwidthHistory.series[e.download] || [];
 		const uploadSeries = this._bandwidthHistory.series[e.upload] || [];
 		const latencySeries = this._networkQualityHistory.series[e.latency] || [];
@@ -3030,6 +3033,7 @@ class FreeboxCardEditor extends HTMLElement {
 if (!customElements.get("freebox-card")) {
 	customElements.define("freebox-card", FreeboxCard);
 }
+
 if (!customElements.get("freebox-card-editor")) {
 	customElements.define("freebox-card-editor", FreeboxCardEditor);
 }
@@ -3043,4 +3047,4 @@ window.customCards.push({
 	documentationURL: "https://github.com/KroFR/freebox-ha-card",
 });
 
-console.info(`%c FREEBOX-CARD %c v${CARD_VERSION} `, "color:white;background:#d71920;font-weight:700", "color:#d71920;background:#f5f5f5");
+console.info(`%c 📡 FREEBOX-CARD %c v${CARD_VERSION} `, "color:white;background:#d71920;font-weight:700", "color:#d71920;background:#f5f5f5");
