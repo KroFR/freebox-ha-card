@@ -1712,7 +1712,7 @@ class FreeboxCard extends HTMLElement {
 	_compactStatus(icon, label, value, entityId = "") {
 		if (value === undefined || value === null || value === "" || value === "—") return "";
 		const attributes = entityId ? ` role="button" tabindex="0" data-more-info="${this._escape(entityId)}"` : "";
-		return `<div class="compact-status-item"${attributes}><ha-icon icon="${icon}"></ha-icon><span>${this._escape(label)}</span><strong>${this._escape(value)}</strong></div>`;
+		return `<div class="compact-status-item"${attributes}><div class="compact-status-content"><ha-icon icon="${icon}"></ha-icon><span>${this._escape(label)}</span><strong>${this._escape(value)}</strong></div></div>`;
 	}
 	_compactLayout(e, info, trackerStats) {
 		setTimeout(() => this._loadBandwidthHistory(e.download, e.upload), 0);
@@ -2171,13 +2171,16 @@ class FreeboxCard extends HTMLElement {
 			.compact-metric small { overflow:hidden; color:var(--secondary-text-color); font-size:9px; line-height:1.1; text-overflow:ellipsis; white-space:nowrap; }
 			.compact-metric strong { margin-top:2px; overflow:hidden; font-size:14px; font-weight:700; line-height:1.2; text-overflow:ellipsis; white-space:nowrap; }
 			.compact-status { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); align-items:center; gap:8px 14px; padding:4px 4px 0; }
-			.compact-status-item { display:flex; align-items:center; gap:5px; min-width:0; color:var(--primary-text-color); font-size:11px; white-space:nowrap; }
-			.compact-status-item { justify-self:start; }
+			.compact-status-item { display:flex; align-items:center; min-width:0; width:100%; color:var(--primary-text-color); font-size:11px; white-space:nowrap; }
+			.compact-status-content { display:grid; grid-template-columns:15px minmax(0,1fr) auto; align-items:center; column-gap:5px; width:155px; min-width:min(100%,155px); }
+			.compact-status-item:nth-child(3n+1) { justify-content:flex-start; }
+			.compact-status-item:nth-child(3n+2) { justify-content:center; }
+			.compact-status-item:nth-child(3n) { justify-content:flex-end; }
 			.compact-status-item[role="button"] { cursor:pointer; }
 			.compact-status-item ha-icon { --mdc-icon-size:15px; flex:0 0 15px; color:var(--secondary-text-color); }
-			.compact-status-item span { color:var(--secondary-text-color); }
-			.compact-status-item strong { font-weight:600; }
-			@container (max-width:360px) { .compact-network { grid-template-columns:repeat(2,minmax(0,1fr)); } .compact-network .compact-metric:last-child:nth-child(odd) { grid-column:1 / -1; } .compact-status { grid-template-columns:1fr; } }
+			.compact-status-item span { min-width:0; overflow:hidden; color:var(--secondary-text-color); text-overflow:ellipsis; white-space:nowrap; }
+			.compact-status-item strong { justify-self:end; font-weight:600; white-space:nowrap; }
+			@container (max-width:360px) { .compact-network { grid-template-columns:repeat(2,minmax(0,1fr)); } .compact-network .compact-metric:last-child:nth-child(odd) { grid-column:1 / -1; } .compact-status { grid-template-columns:1fr; } .compact-status-item:nth-child(n) { justify-content:flex-start; } .compact-status-content { width:auto; min-width:0; grid-template-columns:15px minmax(0,1fr) auto; } }
 			.panel { border:1px solid var(--divider-color); border-radius:16px; background:color-mix(in srgb, var(--secondary-background-color) 72%, transparent); }
 			.internet-panel, .detail-panel { padding:15px; }
 			.section-title { display:flex; align-items:center; gap:8px; margin-bottom:13px; color:var(--secondary-text-color); font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
