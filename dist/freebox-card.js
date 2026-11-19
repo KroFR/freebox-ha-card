@@ -67,6 +67,7 @@ const TRANSLATIONS = {
 			upload: "Upload",
 			used_space: "Space used",
 			missed_calls: "Missed calls",
+			free_space: "Free space",
 			raid: "RAID",
 			healthy: "Healthy",
 			degraded: "Degraded",
@@ -98,6 +99,7 @@ const TRANSLATIONS = {
 			layout_mode: "Layout mode",
 			layout_standard: "Standard",
 			layout_single: "Single section",
+			layout_compact: "Compact",
 			show_header: "Show card icon and title",
 			show_card_background: "Show card background",
 			show_wifi_button: "Show Wi-Fi button",
@@ -188,6 +190,7 @@ const TRANSLATIONS = {
 			upload: "Envoi",
 			used_space: "Espace utilisé",
 			missed_calls: "Appels manqués",
+			free_space: "Espace libre",
 			raid: "RAID",
 			healthy: "Sain",
 			degraded: "Dégradé",
@@ -218,6 +221,7 @@ const TRANSLATIONS = {
 			layout_mode: "Mode d’affichage",
 			layout_standard: "Standard",
 			layout_single: "Section unique",
+			layout_compact: "Compact",
 			show_header: "Afficher l’icône et le titre de la carte",
 			show_card_background: "Afficher le fond de la carte",
 			show_wifi_button: "Afficher le bouton Wi-Fi",
@@ -381,7 +385,7 @@ class FreeboxCard extends HTMLElement {
 		for (const key of booleanFields)
 			if (typeof source[key] === "boolean") safeConfig[key] = source[key];
 		if (source.language === "auto" || TRANSLATIONS[source.language]) safeConfig.language = source.language;
-		if (["standard", "single"].includes(source.layout)) safeConfig.layout = source.layout;
+		if (["standard", "single", "compact"].includes(source.layout)) safeConfig.layout = source.layout;
 		const allowedSections = new Set(FreeboxCard.FIELD_DEFAULTS.section_order);
 		if (Array.isArray(source.section_order))
 			safeConfig.section_order = [...new Set(source.section_order.filter((key) => allowedSections.has(key)))];
@@ -1145,12 +1149,13 @@ class FreeboxCard extends HTMLElement {
 		const renderedSections = Object.fromEntries(sectionOrder.map((key) => [key, sections[key]()]));
 		const availableSections = sectionOrder.filter((key) => renderedSections[key]);
 		const singleLayout = this._config.layout === "single";
+		const compactLayout = this._config.layout === "compact";
 		const activeSection = availableSections.includes(this._activeSection) ? this._activeSection : (availableSections[0] || "");
 		if (singleLayout && activeSection && activeSection !== this._activeSection) this._activeSection = activeSection;
 		const sectionNavigation = singleLayout && availableSections.length > 1
 			? `<nav class="section-navigation" aria-label="Sections" style="--section-count:${availableSections.length}">${availableSections.map((key) => `<button type="button" class="section-navigation-item section-navigation-${key}${key === activeSection ? " active" : ""}" data-section-navigation="${key}" aria-pressed="${key === activeSection}" title="${this._escape(this._t(key === "devices" ? "device_trackers" : key))}"><ha-icon icon="${sectionIcons[key]}"></ha-icon><span>${this._t(key === "devices" ? "device_trackers" : key)}</span></button>`).join("")}</nav>`
 			: "";
-		const sectionContent = singleLayout ? (renderedSections[activeSection] || "") : availableSections.map((key) => renderedSections[key]).join("");
+		const sectionContent = compactLayout ? this._compactLayout(e, internetInfo, trackerStats) : singleLayout ? (renderedSections[activeSection] || "") : availableSections.map((key) => renderedSections[key]).join("");
 
 		this.shadowRoot.innerHTML = `
 			<style>${this._styles()}</style>
@@ -1198,7 +1203,7 @@ class FreeboxCard extends HTMLElement {
 			});
 		});
 		this._initializeSectionNavigation();
-		if (!singleLayout) this._initializeCollapsibleSections();
+		if (!singleLayout && !compactLayout) this._initializeCollapsibleSections();
 		this._initializeBandwidthHistoryTooltip();
 		this._initializeBandwidthHistoryAxis();
 		this._initializeNetworkQualityChart();
@@ -1471,7 +1476,7 @@ class FreeboxCard extends HTMLElement {
 	}
 
 	async _loadBandwidthHistory(downloadEntity, uploadEntity) {
-		if (!this._hass?.callApi || !this._config.show_bandwidth_history) return;
+		if (!this._hass?.callApi || (!this._config.show_bandwidth_history && this._config.layout !== "compact")) return;
 		const entityIds = [downloadEntity, uploadEntity].filter((id) => this._isValidEntityId(id));
 		if (!entityIds.length) {
 			console.warn("[freebox-card][history] No valid bandwidth entities", { downloadEntity, uploadEntity });
@@ -1502,7 +1507,7 @@ class FreeboxCard extends HTMLElement {
 	}
 
 	async _loadNetworkQualityHistory(latencyEntity, packetLossEntity) {
-		if (!this._hass?.callApi || !this._config.show_network_quality_history) return;
+		if (!this._hass?.callApi || (!this._config.show_network_quality_history && this._config.layout !== "compact")) return;
 		const entityIds = [latencyEntity, packetLossEntity].filter((id) => this._isValidEntityId(id));
 		if (!entityIds.length) return;
 		const hours = Math.min(Math.max(Number.parseInt(this._config.history_hours, 10) || 24, 1), 168);
@@ -1685,6 +1690,71 @@ class FreeboxCard extends HTMLElement {
 		const lossMaxMarker = marker(packetLoss, lossPeak, "loss", lossMax, "%");
 		this._networkQualityHoverData = { latency, packetLoss };
 		return `<div class="network-quality-history"><div class="history-title"><span>${this._t("network_quality_history")}</span><small>${this._t("history_method")} · ${hours} h</small></div><div class="quality-chart" data-history-start="${start}" data-history-end="${end}" data-latency-max="${latencyMax}" data-loss-max="${lossMax}"><div class="quality-unit left">${this._t("latency")} (ms)</div><div class="quality-y left">${leftLabels}</div><svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none"><defs><linearGradient id="freebox-latency-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#43a047" stop-opacity=".42"></stop><stop offset="100%" stop-color="#43a047" stop-opacity=".06"></stop></linearGradient></defs>${grid}${latencyArea ? `<path class="quality-latency-area" d="${latencyArea}"></path>` : ""}${bars}${segments.join("")}${latencyMaxMarker}${lossMaxMarker}</svg><div class="quality-y right">${rightLabels}</div><div class="quality-unit right">${this._t("packet_loss")} (%)</div><div class="quality-hover-overlay"></div><div class="quality-cursor" hidden></div><span class="quality-hover-dot quality-hover-latency" hidden></span><span class="quality-hover-dot quality-hover-loss" hidden></span><div class="quality-tooltip" hidden></div><div class="history-x" data-history-hours="${hours}"></div></div></div>`;
+	}
+
+	_compactSparkline(series, color) {
+		const end = Date.now();
+		const start = end - 60 * 60 * 1000;
+		const points = this._groupBandwidthHistory(series || [], start, end, 5 * 60 * 1000);
+		if (points.length < 2) return "";
+		const width = 120, height = 26;
+		const maximum = Math.max(1, ...points.map((point) => point.value));
+		const path = points.map((point, index) => {
+			const x = ((point.timestamp - start) / Math.max(end - start, 1)) * width;
+			const y = height - Math.min(Math.max(point.value / maximum, 0), 1) * (height - 2) - 1;
+			return `${index ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`;
+		}).join(" ");
+		const firstX = ((points[0].timestamp - start) / Math.max(end - start, 1)) * width;
+		const lastX = ((points.at(-1).timestamp - start) / Math.max(end - start, 1)) * width;
+		const area = `${path} L${lastX.toFixed(1)},${height} L${firstX.toFixed(1)},${height} Z`;
+		return `<svg class="compact-sparkline" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true"><path class="compact-sparkline-area" d="${area}" style="fill:${color}"></path><path class="compact-sparkline-line" d="${path}" style="stroke:${color}"></path></svg>`;
+	}
+	_compactMetric(entityId, icon, label, value, tone = "", series = []) {
+		if (!entityId || !this._hass.states[entityId]) return "";
+		const color = tone === "download" ? "#2196f3" : tone === "upload" ? "#4caf50" : "#8b5cf6";
+		return `<button type="button" class="compact-metric ${tone}" data-more-info="${this._escape(entityId)}">${this._compactSparkline(series, color)}<ha-icon icon="${icon}"></ha-icon><span><small>${this._escape(label)}</small><strong>${this._escape(value)}</strong></span></button>`;
+	}
+	_compactStatus(icon, label, value, entityId = "") {
+		if (value === undefined || value === null || value === "" || value === "—") return "";
+		const attributes = entityId ? ` role="button" tabindex="0" data-more-info="${this._escape(entityId)}"` : "";
+		return `<div class="compact-status-item"${attributes}><ha-icon icon="${icon}"></ha-icon><span>${this._escape(label)}</span><strong>${this._escape(value)}</strong></div>`;
+	}
+	_compactLayout(e, info, trackerStats) {
+		setTimeout(() => this._loadBandwidthHistory(e.download, e.upload), 0);
+		setTimeout(() => this._loadNetworkQualityHistory(e.latency, e.packetLoss), 0);
+		const downloadSeries = this._bandwidthHistory.series[e.download] || [];
+		const uploadSeries = this._bandwidthHistory.series[e.upload] || [];
+		const latencySeries = this._networkQualityHistory.series[e.latency] || [];
+		const network = [
+			e.download ? this._compactMetric(e.download, "mdi:arrow-down", this._t("download"), this._formatSpeed(e.download), "download", downloadSeries) : "",
+			e.upload ? this._compactMetric(e.upload, "mdi:arrow-up", this._t("upload"), this._formatSpeed(e.upload), "upload", uploadSeries) : "",
+			e.latency ? this._compactMetric(e.latency, "mdi:pulse", this._t("latency"), this._formatEntity(e.latency), "latency", latencySeries) : "",
+		].filter(Boolean);
+		const uptime = e.uptime ? this._formatUptime(this._hass.states[e.uptime]?.state) : (info.uptime !== undefined ? this._formatUptime(info.uptime) : "");
+		const temperatureEntity = (e.hardwareTemperatures || []).find((id) => {
+			const state = this._hass.states[id]?.state;
+			return state && !["unknown", "unavailable"].includes(state);
+		});
+		const wanState = e.wanStatus ? this._hass.states[e.wanStatus]?.state : "";
+		const normalizedWanState = String(wanState || "").trim().toLowerCase();
+		const wanOnline = ["connected", "on", "online", "home", "up", "ok", "true", "1", "connecté", "connecte", "en ligne"].includes(normalizedWanState);
+		const storageEntity = (e.hardwareStorage || []).find((id) => {
+			const state = this._hass.states[id]?.state;
+			return state && !["unknown", "unavailable"].includes(state);
+		});
+		const storageRaw = storageEntity ? Number.parseFloat(this._hass.states[storageEntity]?.state) : NaN;
+		const storageUnit = storageEntity ? (this._hass.states[storageEntity]?.attributes?.unit_of_measurement || "%") : "%";
+		const usedSpace = Number.isFinite(storageRaw) ? `${new Intl.NumberFormat(this._getLanguage(), { maximumFractionDigits: 1 }).format(Math.max(0, Math.min(100, 100 - storageRaw)))} ${storageUnit}` : "";
+		const status = [
+			e.wanStatus ? this._compactStatus(wanOnline ? "mdi:check-circle" : "mdi:alert-circle", this._t("internet_status"), wanOnline ? this._t("connected") : this._t("offline"), e.wanStatus) : "",
+			this._compactStatus("mdi:clock-outline", this._t("uptime"), uptime, e.uptime),
+			trackerStats?.total ? this._compactStatus("mdi:devices", this._t("devices"), String(trackerStats.home), "") : "",
+			storageEntity && usedSpace ? this._compactStatus("mdi:harddisk", this._t("used_space"), usedSpace, storageEntity) : "",
+			e.missedCalls ? this._compactStatus("mdi:phone-missed", this._t("missed_calls"), this._formatEntity(e.missedCalls), e.missedCalls) : "",
+			temperatureEntity ? this._compactStatus("mdi:thermometer", "CPU", this._formatEntity(temperatureEntity), temperatureEntity) : "",
+		].filter(Boolean);
+		if (!network.length && !status.length) return "";
+		return `<div class="compact-layout">${network.length ? `<div class="compact-network compact-network-${network.length}">${network.join("")}</div>` : ""}${status.length ? `<div class="compact-status compact-status-${status.length}">${status.join("")}</div>` : ""}</div>`;
 	}
 
 	_internetSection(e, info) {
@@ -2031,7 +2101,6 @@ class FreeboxCard extends HTMLElement {
 			:host { display:block; }
 			ha-card { position:relative; overflow:hidden; padding:20px; color:var(--primary-text-color); background:var(--ha-card-background, var(--card-background-color)); }
 			ha-card.light-theme { background:var(--ha-card-background, var(--card-background-color)); }
-			/* Light theme uses the same visual hierarchy as dark theme. */
 			ha-card.light-theme .panel { background:rgba(128,128,128,.08); }
 			ha-card.light-theme .internet-metric,
 			ha-card.light-theme .hardware-tile,
@@ -2092,7 +2161,26 @@ class FreeboxCard extends HTMLElement {
 				.section-navigation-item, .section-navigation-item.active { flex:0 0 auto; flex-basis:auto; justify-content:flex-start; min-width:0; padding-left:9px; padding-right:9px; scroll-snap-align:nearest; }
 				.section-navigation-item span, .section-navigation-item.active span { overflow:visible; text-overflow:clip; }
 			}
-
+			.compact-layout { display:grid; gap:10px; }
+			.compact-network { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+			.compact-network-2 { grid-template-columns:repeat(2,minmax(0,1fr)); }
+			.compact-network-1 { grid-template-columns:1fr; }
+			.compact-metric { position:relative; display:grid; grid-template-columns:20px minmax(0,1fr); align-items:start; gap:6px; min-width:0; min-height:58px; padding:8px 9px 7px; overflow:hidden; border:1px solid var(--divider-color); border-radius:12px; color:var(--primary-text-color); background:var(--card-background-color); font:inherit; text-align:left; }
+			.compact-sparkline { position:absolute; z-index:0; left:0; right:0; bottom:0; width:100%; height:27px; pointer-events:none; }
+			.compact-sparkline-area { opacity:.10; stroke:none; }
+			.compact-sparkline-line { fill:none; opacity:.72; stroke-width:1; vector-effect:non-scaling-stroke; }
+			.compact-metric > ha-icon { position:relative; z-index:1; grid-row:1; --mdc-icon-size:18px; width:20px; color:var(--freebox-accent); }
+			.compact-metric.download > ha-icon { color:#2196f3; } .compact-metric.upload > ha-icon { color:#4caf50; } .compact-metric.latency > ha-icon { color:#8b5cf6; }
+			.compact-metric > span { position:relative; z-index:1; display:grid; min-width:0; }
+			.compact-metric small { overflow:hidden; color:var(--secondary-text-color); font-size:9px; line-height:1.1; text-overflow:ellipsis; white-space:nowrap; }
+			.compact-metric strong { margin-top:2px; overflow:hidden; font-size:14px; font-weight:700; line-height:1.2; text-overflow:ellipsis; white-space:nowrap; }
+			.compact-status { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px 12px; padding:4px 4px 0; }
+			.compact-status-item { display:flex; align-items:center; gap:5px; min-width:0; color:var(--primary-text-color); font-size:11px; white-space:nowrap; }
+			.compact-status-item[role="button"] { cursor:pointer; }
+			.compact-status-item ha-icon { --mdc-icon-size:15px; flex:0 0 15px; color:var(--secondary-text-color); }
+			.compact-status-item span { color:var(--secondary-text-color); }
+			.compact-status-item strong { font-weight:600; }
+			@container (max-width:360px) { .compact-network { grid-template-columns:repeat(2,minmax(0,1fr)); } .compact-network .compact-metric:last-child:nth-child(odd) { grid-column:1 / -1; } .compact-status { flex-wrap:wrap; justify-content:flex-start; } }
 			.panel { border:1px solid var(--divider-color); border-radius:16px; background:color-mix(in srgb, var(--secondary-background-color) 72%, transparent); }
 			.internet-panel, .detail-panel { padding:15px; }
 			.section-title { display:flex; align-items:center; gap:8px; margin-bottom:13px; color:var(--secondary-text-color); font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
@@ -2637,6 +2725,7 @@ class FreeboxCardEditor extends HTMLElement {
 				selector.selector = { select: { mode: "dropdown", options: [
 					{ value: "standard", label: this._et("layout_standard") },
 					{ value: "single", label: this._et("layout_single") },
+					{ value: "compact", label: this._et("layout_compact") },
 				] } };
 			} else if (key === "language" || key === "layout") {
 				selector.selector = { select: { mode: "dropdown", options: [
