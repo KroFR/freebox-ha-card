@@ -1773,7 +1773,7 @@ class FreeboxCard extends HTMLElement {
 		const storageUnit = storageEntity ? (this._hass.states[storageEntity]?.attributes?.unit_of_measurement || "%") : "%";
 		const usedSpace = Number.isFinite(storageRaw) ? `${new Intl.NumberFormat(this._getLanguage(), { maximumFractionDigits: 1 }).format(Math.max(0, Math.min(100, 100 - storageRaw)))} ${storageUnit}` : "";
 		const status = [
-			this._config.show_system !== false && e.wanStatus ? this._compactStatus(wanOnline ? "mdi:check-circle" : "mdi:alert-circle", this._t("internet_status"), wanOnline ? this._t("connected") : this._t("offline"), e.wanStatus) : "",
+			this._config.show_system !== false && e.wanStatus ? this._compactStatus("mdi:web", this._t("internet_status"), wanOnline ? this._t("connected") : this._t("offline"), e.wanStatus) : "",
 			this._config.show_system !== false ? this._compactStatus("mdi:clock-outline", this._t("uptime"), uptime, e.uptime) : "",
 			this._config.show_devices !== false && trackerStats?.total ? this._compactStatus("mdi:devices", this._t("devices"), String(trackerStats.home), "") : "",
 			this._config.show_storage_raid !== false && storageEntity && usedSpace ? this._compactStatus("mdi:harddisk", this._t("used_space"), usedSpace, storageEntity) : "",
@@ -2126,7 +2126,7 @@ class FreeboxCard extends HTMLElement {
 	_styles() {
 		return `
 			:host { display:block; }
-			ha-card { position:relative; overflow:hidden; padding:20px; color:var(--primary-text-color); background:var(--ha-card-background, var(--card-background-color)); }
+			ha-card { position:relative; container-type:inline-size; overflow:hidden; padding:20px; color:var(--primary-text-color); background:var(--ha-card-background, var(--card-background-color)); }
 			ha-card.light-theme { background:var(--ha-card-background, var(--card-background-color)); }
 			/* Light theme uses the same visual hierarchy as dark theme. */
 			ha-card.light-theme .panel { background:rgba(128,128,128,.08); }
@@ -2207,15 +2207,26 @@ class FreeboxCard extends HTMLElement {
 			.compact-metric strong { grid-column:2; grid-row:2; align-self:start; margin-top:0; overflow:hidden; color:var(--primary-text-color); font-family:Helvetica,Arial,sans-serif; font-size:14px; font-weight:700; line-height:1.2; text-overflow:ellipsis; white-space:nowrap; }
 			.compact-status { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); align-items:center; gap:8px 14px; padding:10px 12px; border:1px solid var(--divider-color); border-radius:12px; background:var(--card-background-color); }
 			.compact-status-item { display:flex; align-items:center; min-width:0; width:100%; color:var(--primary-text-color); font-size:11px; white-space:nowrap; }
-			.compact-status-content { display:flex; align-items:center; gap:5px; width:max-content; min-width:min(100%,140px); }
+			.compact-status-content { display:grid; grid-template-columns:15px minmax(0,1fr) auto; align-items:center; column-gap:5px; width:140px; min-width:min(100%,140px); }
 			.compact-status-item:nth-child(3n+1) { justify-content:flex-start; }
 			.compact-status-item:nth-child(3n+2) { justify-content:center; }
 			.compact-status-item:nth-child(3n) { justify-content:flex-end; }
 			.compact-status-item[role="button"] { cursor:pointer; }
 			.compact-status-item ha-icon { --mdc-icon-size:15px; flex:0 0 15px; color:var(--secondary-text-color); }
-			.compact-status-item span { color:var(--secondary-text-color); }
-			.compact-status-item strong { margin-left:auto; font-weight:600; text-align:right; }
-			@container (max-width:360px) { .compact-network { grid-template-columns:repeat(2,minmax(0,1fr)); } .compact-network .compact-metric:last-child:nth-child(odd) { grid-column:1 / -1; } .compact-status { grid-template-columns:1fr; } .compact-status-item:nth-child(n) { justify-content:flex-start; } .compact-status-content { min-width:0; } }
+			.compact-status-item span { min-width:0; overflow:hidden; color:var(--secondary-text-color); text-overflow:ellipsis; white-space:nowrap; }
+			.compact-status-item strong { justify-self:end; margin-left:0; font-weight:600; text-align:right; white-space:nowrap; }
+			@container (max-width:479px) {
+				.compact-status { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px 12px; }
+				.compact-status-item:nth-child(n) { justify-content:stretch; }
+				.compact-status-content { width:100%; min-width:0; }
+			}
+			@container (max-width:319px) {
+				.compact-network { grid-template-columns:repeat(2,minmax(0,1fr)); }
+				.compact-network .compact-metric:last-child:nth-child(odd) { grid-column:1 / -1; }
+				.compact-status { grid-template-columns:1fr; }
+				.compact-status-item:nth-child(n) { justify-content:stretch; }
+				.compact-status-content { width:100%; }
+			}
 			.panel { border:1px solid var(--divider-color); border-radius:16px; background:color-mix(in srgb, var(--secondary-background-color) 72%, transparent); }
 			.internet-panel, .detail-panel { padding:15px; }
 			.section-title { display:flex; align-items:center; gap:8px; margin-bottom:13px; color:var(--secondary-text-color); font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
