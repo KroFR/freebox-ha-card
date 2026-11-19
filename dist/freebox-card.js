@@ -5,7 +5,7 @@
  *
  * License: MIT
  */
-const CARD_VERSION = "2026.11.6";
+const CARD_VERSION = "2026.11.6-1";
 
 /* ---------------------------------------------------------------------- */
 /*  Languages                                                             */
@@ -1184,8 +1184,14 @@ class FreeboxCard extends HTMLElement {
 			const state = entityId ? this._hass?.states?.[entityId]?.state : "";
 			return Boolean(state && !["unknown", "unavailable"].includes(state));
 		};
-		const compactHeaderActions = compactLayout ? `<span class="system-actions compact-header-actions">${this._config.show_admin_console_button !== false ? `<a class="system-action admin-console-action" href="${this._escape(this._getAdminConsoleUrl())}" target="_blank" rel="noopener noreferrer" title="${this._t("admin_console")}" aria-label="${this._t("admin_console")}"><ha-icon icon="mdi:monitor-dashboard"></ha-icon></a>` : ""}${this._config.show_wifi_button !== false && compactEntityAvailable(e.wifi) ? `<button type="button" class="system-action wifi ${this._hass.states[e.wifi]?.state === "on" ? "active" : ""}" data-action="wifi" data-entity="${this._escape(e.wifi)}" title="${this._t("wifi")}" aria-label="${this._t("wifi")}"><ha-icon icon="${this._hass.states[e.wifi]?.state === "on" ? "mdi:wifi" : "mdi:wifi-off"}"></ha-icon></button>` : ""}${this._config.show_reboot_button !== false && compactEntityAvailable(e.reboot) ? `<button type="button" class="system-action reboot-action" data-action="reboot" data-entity="${this._escape(e.reboot)}" title="${this._t("reboot")}" aria-label="${this._t("reboot")}"><ha-icon icon="mdi:restart"></ha-icon></button>` : ""}</span>` : "";
-
+		const compactHeaderActionItems = compactLayout ? [
+			this._config.show_admin_console_button !== false ? `<a class="system-action admin-console-action" href="${this._escape(this._getAdminConsoleUrl())}" target="_blank" rel="noopener noreferrer" title="${this._t("admin_console")}" aria-label="${this._t("admin_console")}"><ha-icon icon="mdi:monitor-dashboard"></ha-icon></a>` : "",
+			this._config.show_wifi_button !== false && compactEntityAvailable(e.wifi) ? `<button type="button" class="system-action wifi ${this._hass.states[e.wifi]?.state === "on" ? "active" : ""}" data-action="wifi" data-entity="${this._escape(e.wifi)}" title="${this._t("wifi")}" aria-label="${this._t("wifi")}"><ha-icon icon="${this._hass.states[e.wifi]?.state === "on" ? "mdi:wifi" : "mdi:wifi-off"}"></ha-icon></button>` : "",
+			this._config.show_reboot_button !== false && compactEntityAvailable(e.reboot) ? `<button type="button" class="system-action reboot-action" data-action="reboot" data-entity="${this._escape(e.reboot)}" title="${this._t("reboot")}" aria-label="${this._t("reboot")}"><ha-icon icon="mdi:restart"></ha-icon></button>` : "",
+		].filter(Boolean) : [];
+		const compactHeaderActions = compactHeaderActionItems.length
+			? `<span class="system-actions compact-header-actions">${compactHeaderActionItems.join("")}</span>`
+			: "";
 		this.shadowRoot.innerHTML = `
 			<style>${this._styles()}</style>
 			<ha-card class="${[this._config.show_card_background ? "" : "no-card-background", this._hass?.themes?.darkMode ? "dark-theme" : "light-theme"].filter(Boolean).join(" ")}" style="--freebox-accent:var(--primary-color)">
