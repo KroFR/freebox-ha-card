@@ -67,7 +67,6 @@ const TRANSLATIONS = {
 			upload: "Upload",
 			used_space: "Space used",
 			missed_calls: "Missed calls",
-			free_space: "Free space",
 			raid: "RAID",
 			healthy: "Healthy",
 			degraded: "Degraded",
@@ -190,7 +189,6 @@ const TRANSLATIONS = {
 			upload: "Envoi",
 			used_space: "Espace utilisé",
 			missed_calls: "Appels manqués",
-			free_space: "Espace libre",
 			raid: "RAID",
 			healthy: "Sain",
 			degraded: "Dégradé",
@@ -1662,13 +1660,7 @@ class FreeboxCard extends HTMLElement {
 		const lossY = (value) => height - Math.min(Math.max(value / lossMax, 0), 1) * height;
 		const latencyPath = this._historyPath(latency, start, end, latencyMax, width, height);
 		const latencyArea = this._historyAreaPath(latencyPath, latency, start, end, width, height);
-		const segments = [];
-		for (let index = 1; index < latency.length; index += 1) {
-			const previous = latency[index - 1], current = latency[index];
-			const average = (previous.value + current.value) / 2;
-			const tone = average > 30 ? "high" : average > 10 ? "medium" : "low";
-			segments.push(`<line class="quality-latency-line ${tone}" x1="${x(previous.timestamp).toFixed(1)}" y1="${latencyY(previous.value).toFixed(1)}" x2="${x(current.timestamp).toFixed(1)}" y2="${latencyY(current.value).toFixed(1)}"></line>`);
-		}
+		const segments = latencyPath ? `<path class="quality-latency-line" d="${latencyPath}"></path>` : "";
 		const barWidth = Math.max(2, Math.min(8, width / Math.max(packetLoss.length, 1) * .65));
 		const bars = packetLoss.map((point) => { const px = x(point.timestamp); const py = lossY(point.value); return `<rect class="quality-loss-bar" x="${(px - barWidth / 2).toFixed(1)}" y="${py.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${Math.max(0, height - py).toFixed(1)}" rx="1"></rect>`; }).join("");
 		const tickCount = 4;
@@ -1689,7 +1681,7 @@ class FreeboxCard extends HTMLElement {
 		const lossPeak = Math.max(0, ...packetLoss.map((point) => point.value));
 		const lossMaxMarker = marker(packetLoss, lossPeak, "loss", lossMax, "%");
 		this._networkQualityHoverData = { latency, packetLoss };
-		return `<div class="network-quality-history"><div class="history-title"><span>${this._t("network_quality_history")}</span><small>${this._t("history_method")} · ${hours} h</small></div><div class="quality-chart" data-history-start="${start}" data-history-end="${end}" data-latency-max="${latencyMax}" data-loss-max="${lossMax}"><div class="quality-unit left">${this._t("latency")} (ms)</div><div class="quality-y left">${leftLabels}</div><svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none"><defs><linearGradient id="freebox-latency-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#43a047" stop-opacity=".42"></stop><stop offset="100%" stop-color="#43a047" stop-opacity=".06"></stop></linearGradient></defs>${grid}${latencyArea ? `<path class="quality-latency-area" d="${latencyArea}"></path>` : ""}${bars}${segments.join("")}${latencyMaxMarker}${lossMaxMarker}</svg><div class="quality-y right">${rightLabels}</div><div class="quality-unit right">${this._t("packet_loss")} (%)</div><div class="quality-hover-overlay"></div><div class="quality-cursor" hidden></div><span class="quality-hover-dot quality-hover-latency" hidden></span><span class="quality-hover-dot quality-hover-loss" hidden></span><div class="quality-tooltip" hidden></div><div class="history-x" data-history-hours="${hours}"></div></div></div>`;
+		return `<div class="network-quality-history"><div class="history-title"><span>${this._t("network_quality_history")}</span><small>${this._t("history_method")} · ${hours} h</small></div><div class="quality-chart" data-history-start="${start}" data-history-end="${end}" data-latency-max="${latencyMax}" data-loss-max="${lossMax}"><div class="quality-unit left">${this._t("latency")} (ms)</div><div class="quality-y left">${leftLabels}</div><svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none"><defs><linearGradient id="freebox-latency-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#8B5CF6" stop-opacity=".42"></stop><stop offset="100%" stop-color="#8B5CF6" stop-opacity=".06"></stop></linearGradient></defs>${grid}${latencyArea ? `<path class="quality-latency-area" d="${latencyArea}"></path>` : ""}${bars}${segments}${latencyMaxMarker}${lossMaxMarker}</svg><div class="quality-y right">${rightLabels}</div><div class="quality-unit right">${this._t("packet_loss")} (%)</div><div class="quality-hover-overlay"></div><div class="quality-cursor" hidden></div><span class="quality-hover-dot quality-hover-latency" hidden></span><span class="quality-hover-dot quality-hover-loss" hidden></span><div class="quality-tooltip" hidden></div><div class="history-x" data-history-hours="${hours}"></div></div></div>`;
 	}
 
 	_compactSparkline(series, color) {
@@ -1699,21 +1691,21 @@ class FreeboxCard extends HTMLElement {
 		if (points.length < 2) return "";
 		const width = 120, height = 26;
 		const maximum = Math.max(1, ...points.map((point) => point.value));
-		const path = points.map((point, index) => {
-			const x = ((point.timestamp - start) / Math.max(end - start, 1)) * width;
-			const y = height - Math.min(Math.max(point.value / maximum, 0), 1) * (height - 2) - 1;
-			return `${index ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`;
-		}).join(" ");
-		const firstX = ((points[0].timestamp - start) / Math.max(end - start, 1)) * width;
-		const lastX = ((points.at(-1).timestamp - start) / Math.max(end - start, 1)) * width;
-		const area = `${path} L${lastX.toFixed(1)},${height} L${firstX.toFixed(1)},${height} Z`;
-		return `<svg class="compact-sparkline" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true"><path class="compact-sparkline-area" d="${area}" style="fill:${color}"></path><path class="compact-sparkline-line" d="${path}" style="stroke:${color}"></path></svg>`;
+		const coords = (point) => ({ x: ((point.timestamp-start)/Math.max(end-start,1))*width, y: height-Math.min(Math.max(point.value/maximum,0),1)*(height-2)-1 });
+		const path = points.map((point,index) => { const c=coords(point); return `${index?"L":"M"}${c.x.toFixed(1)},${c.y.toFixed(1)}`; }).join(" ");
+		const first=coords(points[0]), last=coords(points.at(-1));
+		const area = `${path} L${last.x.toFixed(1)},${height} L${first.x.toFixed(1)},${height} Z`;
+		const line = `<path class="compact-sparkline-line" d="${path}" style="stroke:${color}"></path>`;
+		return `<svg class="compact-sparkline" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true"><path class="compact-sparkline-area" d="${area}" style="fill:${color}"></path>${line}</svg>`;
 	}
+
 	_compactMetric(entityId, icon, label, value, tone = "", series = []) {
 		if (!entityId || !this._hass.states[entityId]) return "";
-		const color = tone === "download" ? "#2196f3" : tone === "upload" ? "#4caf50" : "#8b5cf6";
-		return `<button type="button" class="compact-metric ${tone}" data-more-info="${this._escape(entityId)}">${this._compactSparkline(series, color)}<ha-icon icon="${icon}"></ha-icon><span><small>${this._escape(label)}</small><strong>${this._escape(value)}</strong></span></button>`;
+		const latencyValue = tone === "latency" ? Number.parseFloat(this._hass.states[entityId]?.state) : NaN;
+		const color = tone === "download" ? "#2196f3" : tone === "upload" ? "#4caf50" : latencyValue > 30 ? "#EF4444" : latencyValue > 10 ? "#F59E0B" : "#8B5CF6";
+		return `<button type="button" class="compact-metric ${tone}" data-more-info="${this._escape(entityId)}" style="--compact-metric-color:${color}">${this._compactSparkline(series, tone === "latency" ? "#8B5CF6" : color)}<ha-icon icon="${icon}"></ha-icon><span><small>${this._escape(label)}</small><strong>${this._escape(value)}</strong></span></button>`;
 	}
+
 	_compactStatus(icon, label, value, entityId = "") {
 		if (value === undefined || value === null || value === "" || value === "—") return "";
 		const attributes = entityId ? ` role="button" tabindex="0" data-more-info="${this._escape(entityId)}"` : "";
@@ -2101,6 +2093,7 @@ class FreeboxCard extends HTMLElement {
 			:host { display:block; }
 			ha-card { position:relative; overflow:hidden; padding:20px; color:var(--primary-text-color); background:var(--ha-card-background, var(--card-background-color)); }
 			ha-card.light-theme { background:var(--ha-card-background, var(--card-background-color)); }
+			/* Light theme uses the same visual hierarchy as dark theme. */
 			ha-card.light-theme .panel { background:rgba(128,128,128,.08); }
 			ha-card.light-theme .internet-metric,
 			ha-card.light-theme .hardware-tile,
@@ -2170,17 +2163,18 @@ class FreeboxCard extends HTMLElement {
 			.compact-sparkline-area { opacity:.10; stroke:none; }
 			.compact-sparkline-line { fill:none; opacity:.72; stroke-width:1; vector-effect:non-scaling-stroke; }
 			.compact-metric > ha-icon { position:relative; z-index:1; grid-row:1; --mdc-icon-size:18px; width:20px; color:var(--freebox-accent); }
-			.compact-metric.download > ha-icon { color:#2196f3; } .compact-metric.upload > ha-icon { color:#4caf50; } .compact-metric.latency > ha-icon { color:#8b5cf6; }
+			.compact-metric.download > ha-icon { color:#2196f3; } .compact-metric.upload > ha-icon { color:#4caf50; } .compact-metric.latency > ha-icon, .compact-metric.latency strong { color:var(--compact-metric-color,#8B5CF6); }
 			.compact-metric > span { position:relative; z-index:1; display:grid; min-width:0; }
 			.compact-metric small { overflow:hidden; color:var(--secondary-text-color); font-size:9px; line-height:1.1; text-overflow:ellipsis; white-space:nowrap; }
 			.compact-metric strong { margin-top:2px; overflow:hidden; font-size:14px; font-weight:700; line-height:1.2; text-overflow:ellipsis; white-space:nowrap; }
-			.compact-status { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px 12px; padding:4px 4px 0; }
+			.compact-status { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); align-items:center; gap:8px 14px; padding:4px 4px 0; }
 			.compact-status-item { display:flex; align-items:center; gap:5px; min-width:0; color:var(--primary-text-color); font-size:11px; white-space:nowrap; }
+			.compact-status-item { justify-self:start; }
 			.compact-status-item[role="button"] { cursor:pointer; }
 			.compact-status-item ha-icon { --mdc-icon-size:15px; flex:0 0 15px; color:var(--secondary-text-color); }
 			.compact-status-item span { color:var(--secondary-text-color); }
 			.compact-status-item strong { font-weight:600; }
-			@container (max-width:360px) { .compact-network { grid-template-columns:repeat(2,minmax(0,1fr)); } .compact-network .compact-metric:last-child:nth-child(odd) { grid-column:1 / -1; } .compact-status { flex-wrap:wrap; justify-content:flex-start; } }
+			@container (max-width:360px) { .compact-network { grid-template-columns:repeat(2,minmax(0,1fr)); } .compact-network .compact-metric:last-child:nth-child(odd) { grid-column:1 / -1; } .compact-status { grid-template-columns:1fr; } }
 			.panel { border:1px solid var(--divider-color); border-radius:16px; background:color-mix(in srgb, var(--secondary-background-color) 72%, transparent); }
 			.internet-panel, .detail-panel { padding:15px; }
 			.section-title { display:flex; align-items:center; gap:8px; margin-bottom:13px; color:var(--secondary-text-color); font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
@@ -2260,17 +2254,17 @@ class FreeboxCard extends HTMLElement {
 			.quality-y.left { grid-column:2; text-align:right; } .quality-y.right { grid-column:4; text-align:left; }
 			.quality-y span { position:absolute; line-height:1; transform:translateY(-50%); white-space:nowrap; } .quality-y.left span { right:7px; } .quality-y.right span { left:5px; }
 			.quality-latency-area { fill:url(#freebox-latency-fill); stroke:none; }
-			.quality-latency-line { stroke-width:1.15; stroke-linecap:round; vector-effect:non-scaling-stroke; } .quality-latency-line.low { stroke:#43a047; } .quality-latency-line.medium { stroke:#f59e0b; } .quality-latency-line.high { stroke:#e53935; }
+			.quality-latency-line { fill:none; stroke:#8B5CF6; stroke-width:1.15; stroke-linecap:round; stroke-linejoin:round; vector-effect:non-scaling-stroke; }
 			.quality-loss-bar { fill:#c62828; opacity:.88; }
 			.quality-chart .history-x { grid-column:3; }
 			.quality-hover-overlay { position:absolute; z-index:4; left:30px; right:35px; top:0; height:135px; cursor:crosshair; }
 			.quality-cursor { position:absolute; z-index:3; top:0; height:135px; border-left:1px dashed var(--secondary-text-color); pointer-events:none; opacity:.75; }
 			.quality-hover-dot { position:absolute; z-index:5; width:7px; height:7px; border:2px solid var(--card-background-color); border-radius:50%; transform:translate(-50%,-50%); pointer-events:none; }
-			.quality-hover-latency { background:#43a047; } .quality-hover-loss { background:#c62828; }
+			.quality-hover-latency { background:#8B5CF6; } .quality-hover-loss { background:#c62828; }
 			.quality-tooltip { position:absolute; z-index:6; top:6px; min-width:150px; padding:8px 10px; border:1px solid var(--divider-color); border-radius:7px; color:var(--primary-text-color); background:var(--ha-card-background,var(--card-background-color)); box-shadow:0 3px 12px rgba(0,0,0,.28); font-size:12px; line-height:1.35; pointer-events:none; }
 			.quality-tooltip strong,.quality-tooltip span { display:block; } .quality-tooltip strong { margin-bottom:5px; } .quality-tooltip span { margin-top:3px; white-space:nowrap; }
-			.quality-tooltip i { display:inline-block; width:7px; height:7px; margin-right:5px; border-radius:50%; } .quality-tooltip i.latency { background:#43a047; } .quality-tooltip i.loss { background:#c62828; }
-			.quality-max-marker { pointer-events:none; } .quality-max-marker line { stroke-width:1; vector-effect:non-scaling-stroke; } .quality-max-marker rect { opacity:.96; } .quality-max-marker text { fill:#fff; font-size:12px; font-weight:400; } .quality-max-marker.latency text { fill:#000; } .quality-max-marker.latency line,.quality-max-marker.latency circle { stroke:#43a047; fill:#43a047; } .quality-max-marker.latency rect { fill:#43a047; } .quality-max-marker.loss line,.quality-max-marker.loss circle { stroke:#c62828; fill:#c62828; } .quality-max-marker.loss rect { fill:#c62828; }
+			.quality-tooltip i { display:inline-block; width:7px; height:7px; margin-right:5px; border-radius:50%; } .quality-tooltip i.latency { background:#8B5CF6; } .quality-tooltip i.loss { background:#c62828; }
+			.quality-max-marker { pointer-events:none; } .quality-max-marker line { stroke-width:1; vector-effect:non-scaling-stroke; } .quality-max-marker rect { opacity:.96; } .quality-max-marker text { fill:#fff; font-size:12px; font-weight:400; } .quality-max-marker.latency text { fill:#000; } .quality-max-marker.latency line,.quality-max-marker.latency circle { stroke:#8B5CF6; fill:#8B5CF6; } .quality-max-marker.latency rect { fill:#8B5CF6; } .quality-max-marker.loss line,.quality-max-marker.loss circle { stroke:#c62828; fill:#c62828; } .quality-max-marker.loss rect { fill:#c62828; }
 			ha-card.light-theme .quality-y, ha-card.light-theme .quality-unit { color:#202124; } ha-card.dark-theme .quality-y, ha-card.dark-theme .quality-unit { color:#fff; }
 			@media (max-width:520px) { .quality-chart { grid-template-columns:0 29px minmax(0,1fr) 23px 10px; } .quality-unit { font-size:10px; } .quality-unit.left { left:-8px; width:11px; } .quality-unit.right { right:-8px; } .quality-y { font-size:10px; } .quality-hover-overlay { left:29px; right:33px; } .quality-max-marker text { font-family:Helvetica,Arial,sans-serif; font-size:14px; } .quality-max-marker rect { transform-box:fill-box; transform-origin:center; transform:scale(1.22,1.28); } }
 			.internet-metric { position:relative; display:grid; grid-template-columns:40px minmax(0,1fr); grid-template-rows:min-content min-content; column-gap:8px; align-items:center; min-width:0; padding:7px 8px; border:1px solid var(--divider-color); border-radius:12px; color:var(--primary-text-color); background:var(--card-background-color); font:inherit; text-align:left; }
