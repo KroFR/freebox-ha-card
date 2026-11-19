@@ -99,6 +99,15 @@ const TRANSLATIONS = {
 			layout_standard: "Standard",
 			layout_single: "Single section",
 			layout_compact: "Compact",
+			compact_content: "Status information",
+			compact_bandwidth_metrics: "Show bandwidth metrics",
+			compact_latency_metric: "Show latency metric",
+			compact_system_status: "Show Internet status and uptime",
+			compact_devices: "Show connected devices",
+			compact_storage: "Show storage usage",
+			compact_missed_calls: "Show missed calls",
+			compact_temperature: "Show CPU temperature",
+			header_actions: "Header buttons",
 			show_header: "Show card icon and title",
 			show_card_background: "Show card background",
 			show_wifi_button: "Show Wi-Fi button",
@@ -124,6 +133,10 @@ const TRANSLATIONS = {
 			unsupported_storage_raid: "No storage or RAID sensor is available for this Freebox.",
 			unsupported_fans: "No fan sensor is available for this Freebox.",
 			unsupported_temperatures: "No temperature sensor is available for this Freebox.",
+			unsupported_bandwidth: "No bandwidth sensor is available for this Freebox.",
+			unsupported_latency: "No latency sensor is configured or available.",
+			unsupported_system_status: "No Internet status or uptime sensor is available for this Freebox.",
+			unsupported_missed_calls: "No missed calls sensor is available for this Freebox.",
 			show_connected_tile: "Show Connected tile",
 			show_disconnected_tile: "Show Disconnected tile",
 			show_disabled_tile: "Show Disabled tile",
@@ -220,6 +233,15 @@ const TRANSLATIONS = {
 			layout_standard: "Standard",
 			layout_single: "Section unique",
 			layout_compact: "Compact",
+			compact_content: "Informations d’état",
+			compact_bandwidth_metrics: "Afficher la bande passante",
+			compact_latency_metric: "Afficher la latence",
+			compact_system_status: "Afficher l’état Internet et la disponibilité",
+			compact_devices: "Afficher les appareils connectés",
+			compact_storage: "Afficher l’espace utilisé",
+			compact_missed_calls: "Afficher les appels manqués",
+			compact_temperature: "Afficher la température CPU",
+			header_actions: "Bouttons du bandeau",
 			show_header: "Afficher l’icône et le titre de la carte",
 			show_card_background: "Afficher le fond de la carte",
 			show_wifi_button: "Afficher le bouton Wi-Fi",
@@ -245,6 +267,10 @@ const TRANSLATIONS = {
 			unsupported_storage_raid: "Aucun capteur de stockage ou RAID n’est disponible pour cette Freebox.",
 			unsupported_fans: "Aucun capteur de ventilateur n’est disponible pour cette Freebox.",
 			unsupported_temperatures: "Aucun capteur de température n’est disponible pour cette Freebox.",
+			unsupported_bandwidth: "Aucun capteur de bande passante n’est disponible pour cette Freebox.",
+			unsupported_latency: "Aucun capteur de latence n’est configuré ou disponible.",
+			unsupported_system_status: "Aucun capteur d’état Internet ou de disponibilité n’est disponible pour cette Freebox.",
+			unsupported_missed_calls: "Aucun capteur d’appels manqués n’est disponible pour cette Freebox.",
 			show_connected_tile: "Afficher la tuile Connectés",
 			show_disconnected_tile: "Afficher la tuile Déconnectés",
 			show_disabled_tile: "Afficher la tuile Désactivés",
@@ -1154,11 +1180,16 @@ class FreeboxCard extends HTMLElement {
 			? `<nav class="section-navigation" aria-label="Sections" style="--section-count:${availableSections.length}">${availableSections.map((key) => `<button type="button" class="section-navigation-item section-navigation-${key}${key === activeSection ? " active" : ""}" data-section-navigation="${key}" aria-pressed="${key === activeSection}" title="${this._escape(this._t(key === "devices" ? "device_trackers" : key))}"><ha-icon icon="${sectionIcons[key]}"></ha-icon><span>${this._t(key === "devices" ? "device_trackers" : key)}</span></button>`).join("")}</nav>`
 			: "";
 		const sectionContent = compactLayout ? this._compactLayout(e, internetInfo, trackerStats) : singleLayout ? (renderedSections[activeSection] || "") : availableSections.map((key) => renderedSections[key]).join("");
+		const compactEntityAvailable = (entityId) => {
+			const state = entityId ? this._hass?.states?.[entityId]?.state : "";
+			return Boolean(state && !["unknown", "unavailable"].includes(state));
+		};
+		const compactHeaderActions = compactLayout ? `<span class="system-actions compact-header-actions">${this._config.show_admin_console_button !== false ? `<a class="system-action admin-console-action" href="${this._escape(this._getAdminConsoleUrl())}" target="_blank" rel="noopener noreferrer" title="${this._t("admin_console")}" aria-label="${this._t("admin_console")}"><ha-icon icon="mdi:monitor-dashboard"></ha-icon></a>` : ""}${this._config.show_wifi_button !== false && compactEntityAvailable(e.wifi) ? `<button type="button" class="system-action wifi ${this._hass.states[e.wifi]?.state === "on" ? "active" : ""}" data-action="wifi" data-entity="${this._escape(e.wifi)}" title="${this._t("wifi")}" aria-label="${this._t("wifi")}"><ha-icon icon="${this._hass.states[e.wifi]?.state === "on" ? "mdi:wifi" : "mdi:wifi-off"}"></ha-icon></button>` : ""}${this._config.show_reboot_button !== false && compactEntityAvailable(e.reboot) ? `<button type="button" class="system-action reboot-action" data-action="reboot" data-entity="${this._escape(e.reboot)}" title="${this._t("reboot")}" aria-label="${this._t("reboot")}"><ha-icon icon="mdi:restart"></ha-icon></button>` : ""}</span>` : "";
 
 		this.shadowRoot.innerHTML = `
 			<style>${this._styles()}</style>
 			<ha-card class="${[this._config.show_card_background ? "" : "no-card-background", this._hass?.themes?.darkMode ? "dark-theme" : "light-theme"].filter(Boolean).join(" ")}" style="--freebox-accent:var(--primary-color)">
-				${this._config.show_header ? `<header><div class="brand-icon"><ha-icon icon="mdi:router-wireless"></ha-icon></div><h2>${this._escape(this._config.name || this._t("name"))}</h2></header>` : ""}
+				${this._config.show_header ? `<header><div class="brand-icon"><ha-icon icon="mdi:router-wireless"></ha-icon></div><h2>${this._escape(this._config.name || this._t("name"))}</h2>${compactHeaderActions}</header>` : compactLayout && compactHeaderActions ? `<div class="compact-actions-only">${compactHeaderActions}</div>` : ""}
 				${!selectedDeviceId && !entities.length ? `<div class="empty"><ha-icon icon="mdi:router-wireless-settings"></ha-icon>${this._t("no_device")}</div>` : ""}
 				${selectedDeviceId && !entities.length ? `<div class="empty"><ha-icon icon="mdi:alert-circle-outline"></ha-icon>${this._t("no_entities")}</div>` : ""}
 				${singleLayout && this._config.show_card_background !== false ? sectionNavigation : ""}<div class="content${singleLayout ? " single-section-content" : ""}">${singleLayout && this._config.show_card_background === false && sectionNavigation ? `<div class="single-section-panel-shell">${sectionNavigation}<div class="single-section-panel-content">${sectionContent}</div></div>` : sectionContent}</div>
@@ -1714,15 +1745,17 @@ class FreeboxCard extends HTMLElement {
 		return `<div class="compact-status-item"${attributes}><div class="compact-status-content"><ha-icon icon="${icon}"></ha-icon><span>${this._escape(label)}</span><strong>${this._escape(value)}</strong></div></div>`;
 	}
 	_compactLayout(e, info, trackerStats) {
-		setTimeout(() => this._loadBandwidthHistory(e.download, e.upload), 0);
-		setTimeout(() => this._loadNetworkQualityHistory(e.latency, e.packetLoss), 0);
+		if (this._config.show_live_metrics !== false) setTimeout(() => this._loadBandwidthHistory(e.download, e.upload), 0);
+		if (this._config.show_network_quality_history !== false) setTimeout(() => this._loadNetworkQualityHistory(e.latency, e.packetLoss), 0);
 		const downloadSeries = this._bandwidthHistory.series[e.download] || [];
 		const uploadSeries = this._bandwidthHistory.series[e.upload] || [];
 		const latencySeries = this._networkQualityHistory.series[e.latency] || [];
+		const showBandwidth = this._config.show_live_metrics !== false;
+		const showLatency = this._config.show_network_quality_history !== false;
 		const network = [
-			e.download ? this._compactMetric(e.download, "mdi:arrow-down", this._t("download"), this._formatSpeed(e.download), "download", downloadSeries) : "",
-			e.upload ? this._compactMetric(e.upload, "mdi:arrow-up", this._t("upload"), this._formatSpeed(e.upload), "upload", uploadSeries) : "",
-			e.latency ? this._compactMetric(e.latency, "mdi:pulse", this._t("latency"), this._formatEntity(e.latency), "latency", latencySeries) : "",
+			showBandwidth && e.download ? this._compactMetric(e.download, "mdi:arrow-down", this._t("download"), this._formatSpeed(e.download), "download", downloadSeries) : "",
+			showBandwidth && e.upload ? this._compactMetric(e.upload, "mdi:arrow-up", this._t("upload"), this._formatSpeed(e.upload), "upload", uploadSeries) : "",
+			showLatency && e.latency ? this._compactMetric(e.latency, "mdi:pulse", this._t("latency"), this._formatEntity(e.latency), "latency", latencySeries) : "",
 		].filter(Boolean);
 		const uptime = e.uptime ? this._formatUptime(this._hass.states[e.uptime]?.state) : (info.uptime !== undefined ? this._formatUptime(info.uptime) : "");
 		const temperatureEntity = (e.hardwareTemperatures || []).find((id) => {
@@ -1740,12 +1773,12 @@ class FreeboxCard extends HTMLElement {
 		const storageUnit = storageEntity ? (this._hass.states[storageEntity]?.attributes?.unit_of_measurement || "%") : "%";
 		const usedSpace = Number.isFinite(storageRaw) ? `${new Intl.NumberFormat(this._getLanguage(), { maximumFractionDigits: 1 }).format(Math.max(0, Math.min(100, 100 - storageRaw)))} ${storageUnit}` : "";
 		const status = [
-			e.wanStatus ? this._compactStatus(wanOnline ? "mdi:check-circle" : "mdi:alert-circle", this._t("internet_status"), wanOnline ? this._t("connected") : this._t("offline"), e.wanStatus) : "",
-			this._compactStatus("mdi:clock-outline", this._t("uptime"), uptime, e.uptime),
-			trackerStats?.total ? this._compactStatus("mdi:devices", this._t("devices"), String(trackerStats.home), "") : "",
-			storageEntity && usedSpace ? this._compactStatus("mdi:harddisk", this._t("used_space"), usedSpace, storageEntity) : "",
-			e.missedCalls ? this._compactStatus("mdi:phone-missed", this._t("missed_calls"), this._formatEntity(e.missedCalls), e.missedCalls) : "",
-			temperatureEntity ? this._compactStatus("mdi:thermometer", "CPU", this._formatEntity(temperatureEntity), temperatureEntity) : "",
+			this._config.show_system !== false && e.wanStatus ? this._compactStatus(wanOnline ? "mdi:check-circle" : "mdi:alert-circle", this._t("internet_status"), wanOnline ? this._t("connected") : this._t("offline"), e.wanStatus) : "",
+			this._config.show_system !== false ? this._compactStatus("mdi:clock-outline", this._t("uptime"), uptime, e.uptime) : "",
+			this._config.show_devices !== false && trackerStats?.total ? this._compactStatus("mdi:devices", this._t("devices"), String(trackerStats.home), "") : "",
+			this._config.show_storage_raid !== false && storageEntity && usedSpace ? this._compactStatus("mdi:harddisk", this._t("used_space"), usedSpace, storageEntity) : "",
+			this._config.show_telephony !== false && e.missedCalls ? this._compactStatus("mdi:phone-missed", this._t("missed_calls"), this._formatEntity(e.missedCalls), e.missedCalls) : "",
+			this._config.show_temperatures !== false && temperatureEntity ? this._compactStatus("mdi:thermometer", "CPU", this._formatEntity(temperatureEntity), temperatureEntity) : "",
 		].filter(Boolean);
 		if (!network.length && !status.length) return "";
 		return `<div class="compact-layout">${network.length ? `<div class="compact-network compact-network-${network.length}">${network.join("")}</div>` : ""}${status.length ? `<div class="compact-status compact-status-${status.length}">${status.join("")}</div>` : ""}</div>`;
@@ -2125,7 +2158,10 @@ class FreeboxCard extends HTMLElement {
 			ha-card.dark-theme.no-card-background .connected-devices-list,
 			ha-card.dark-theme.no-card-background .debug-group { background:color-mix(in srgb, var(--secondary-background-color) 72%, transparent); }
 			header { display:flex; align-items:center; gap:10px; margin-bottom:20px; }
-			.brand-icon { display:flex; align-items:center; justify-content:center; width:44apx; height:44px; flex:0 0 44px; border:1px solid var(--divider-color); border-radius:14px; color:var(--freebox-accent); background:rgba(128,128,128,.08); }
+			.compact-actions-only { display:flex; justify-content:flex-end; min-height:28px; margin-bottom:8px; }
+			.compact-actions-only:empty { display:none; margin:0; }
+			.compact-actions-only .compact-header-actions { margin-left:0; }
+			.brand-icon { display:flex; align-items:center; justify-content:center; width:44px; height:44px; flex:0 0 44px; border:1px solid var(--divider-color); border-radius:14px; color:var(--freebox-accent); background:rgba(128,128,128,.08); }
 			.brand-icon ha-icon { --mdc-icon-size:24px; }
 			h2 { flex:1; min-width:0; margin:0; overflow:hidden; text-overflow:ellipsis; font-size:1.2em; font-weight:600; line-height:1.2; white-space:nowrap; }
 			.system-title { justify-content:space-between; }
@@ -2471,6 +2507,7 @@ class FreeboxCardEditor extends HTMLElement {
 		this._detectionDevices = [];
 		this._detectionLoading = false;
 		this._layoutSectionsOpen = new Set();
+		this._compactGroupsOpen = new Set();
 		this._draggedSectionKey = "";
 	}
 
@@ -2524,7 +2561,7 @@ class FreeboxCardEditor extends HTMLElement {
 	}
 
 	_getCapabilitySupport() {
-		if (!this._hass || !this._config) return { wifi:false, reboot:false, storage_raid:false, fans:false, temperatures:false };
+		if (!this._hass || !this._config) return { wifi:false, reboot:false, storage_raid:false, fans:false, temperatures:false, bandwidth:false, latency:false, system_status:false, missed_calls:false };
 		const resolver = Object.create(FreeboxCard.prototype);
 		resolver._hass = this._hass;
 		resolver._config = { ...FreeboxCard.FIELD_DEFAULTS, ...this._config };
@@ -2536,6 +2573,9 @@ class FreeboxCardEditor extends HTMLElement {
 			wifi: available(entities.wifi), reboot: available(entities.reboot),
 			storage_raid: [...(entities.hardwareStorage||[]), ...(entities.hardwareRaid||[])].some(available),
 			fans: (entities.hardwareFans||[]).some(available), temperatures: (entities.hardwareTemperatures||[]).some(available),
+			bandwidth: available(entities.download) || available(entities.upload),
+			latency: available(entities.latency), system_status: available(entities.wanStatus) || available(entities.uptime),
+			missed_calls: available(entities.missedCalls),
 		};
 	}
 
@@ -2592,7 +2632,16 @@ class FreeboxCardEditor extends HTMLElement {
 		}).join("");
 	}
 
+	_renderCompactOptions() {
+		const group = (key, icon, title, content, extraClass = "") => `<details class="section-order-item compact-option-group ${extraClass}" data-compact-group="${key}"${this._compactGroupsOpen.has(key) ? " open" : ""}><summary class="compact-option-row"><ha-icon class="section-icon" icon="${icon}"></ha-icon><span class="section-label">${title}</span><span class="section-expand" aria-hidden="true"><ha-icon icon="mdi:chevron-down"></ha-icon></span></summary><div class="section-options compact-option-content open"><div class="section-suboptions">${content}</div></div></details>`;
+		const actions = `${this._switchRow("show_admin_console_button", this._et("show_admin_console_button"))}<label>${this._et("admin_console_ip")}<input data-config="admin_console_ip" type="text" inputmode="decimal" autocomplete="off" placeholder="mafreebox.freebox.fr"></label>${this._switchRow("show_wifi_button", this._et("show_wifi_button"), "wifi")}${this._switchRow("show_reboot_button", this._et("show_reboot_button"), "reboot")}`;
+		const metrics = `${this._switchRow("show_live_metrics", this._et("compact_bandwidth_metrics"), "bandwidth")}${this._switchRow("show_network_quality_history", this._et("compact_latency_metric"), "latency")}${this._entitySelector("latency_entity", this._et("latency_entity"), "sensor")}<label>${this._et("history_hours")}<input data-config="history_hours" type="number" min="1" max="168" step="1" placeholder="24"></label>`;
+		const status = `${this._switchRow("show_system", this._et("compact_system_status"), "system_status")}${this._switchRow("show_devices", this._et("compact_devices"))}${this._switchRow("show_storage_raid", this._et("compact_storage"), "storage_raid")}${this._switchRow("show_telephony", this._et("compact_missed_calls"), "missed_calls")}${this._switchRow("show_temperatures", this._et("compact_temperature"), "temperatures")}`;
+		return `<div class="compact-editor-options">${group("actions", "mdi:gesture-tap-button", this._et("header_actions"), actions, "compact-header-options")}${group("metrics", "mdi:chart-timeline-variant", this._et("live_metrics"), metrics)}${group("status", "mdi:information-outline", this._et("compact_content"), status)}</div>`;
+	}
+
 	_render() {
+		const compactLayout = this._config?.layout === "compact";
 		this.innerHTML = `
 		<style>
 			.editor { display: grid; gap: 12px; padding: 8px 0; }
@@ -2653,6 +2702,24 @@ class FreeboxCardEditor extends HTMLElement {
 			.section-suboptions label { gap:4px; }
 			.section-suboptions input { min-height:36px; }
 			.layout-options { display:grid; gap:4px; padding-bottom:10px; border-bottom:1px solid var(--divider-color); }
+			.compact-editor-options { display:grid; gap:10px; }
+			.compact-header-options { margin-top:2px; }
+			.compact-option-row { display:grid; grid-template-columns:24px minmax(0,1fr) 32px; align-items:center; gap:8px; min-height:48px; padding:5px 8px; cursor:pointer; list-style:none; }
+			.compact-option-row::-webkit-details-marker { display:none; }
+			.compact-option-row::marker { display:none; content:""; }
+			.compact-option-row::after { content:none !important; display:none !important; width:0 !important; height:0 !important; border:0 !important; }
+			.compact-option-group[open] > .compact-option-row::after { content:none !important; transform:none !important; }
+			.compact-option-row:hover { background:color-mix(in srgb, var(--secondary-background-color) 55%, transparent); }
+			.compact-option-row .section-icon { justify-self:center; }
+			.compact-option-row .section-expand { justify-self:end; }
+			.compact-option-row .section-expand ha-icon { transition:transform .18s ease; }
+			.compact-option-group[open] .compact-option-row .section-expand ha-icon { transform:rotate(180deg); }
+			.compact-option-group .compact-option-content { border-top:0; }
+			.compact-option-group[open] .compact-option-content { border-top:1px solid var(--divider-color); }
+			.compact-option-group:not([open]) .compact-option-content { display:none; }
+			.compact-option-group[open] .compact-option-content { display:block; }
+			.compact-option-group .section-suboptions { padding:12px; }
+
 			ha-switch { flex-shrink:0; }
 			@media (max-width:600px) { .grid, .switch-grid, .bandwidth-limits { grid-template-columns:1fr; } }
 		</style>
@@ -2669,7 +2736,7 @@ class FreeboxCardEditor extends HTMLElement {
 				${this._sectionSummary(FreeboxCardEditor.SECTION_ICONS.layout, this._et("card_layout"))}
 				<div class="section-content">
 					<div class="field"><span>${this._et("layout_mode")}</span><ha-selector data-config="layout"></ha-selector></div><div class="layout-options">${this._switchRow("show_header", this._et("show_header"))}${this._switchRow("show_card_background", this._et("show_card_background"))}</div>
-					<div class="section-order-list">${this._renderSectionOrder()}</div>
+					${compactLayout ? this._renderCompactOptions() : `<div class="section-order-list">${this._renderSectionOrder()}</div>`}
 				</div>
 			</details>
 		</div>`;
@@ -2678,8 +2745,19 @@ class FreeboxCardEditor extends HTMLElement {
 		this._initializeInputs();
 		this._initializeSwitches();
 		this._initializeSectionOrder();
+		this._initializeCompactGroups();
 	}
 
+	_initializeCompactGroups() {
+		this.querySelectorAll("details[data-compact-group]").forEach((group) => {
+			group.addEventListener("toggle", () => {
+				const key = group.dataset.compactGroup;
+				if (!key) return;
+				if (group.open) this._compactGroupsOpen.add(key);
+				else this._compactGroupsOpen.delete(key);
+			});
+		});
+	}
 	async _loadDetectionDevices() {
 		if (!this._hass?.connection || Object.keys(this._hass.devices || {}).length || this._detectionDevices.length || this._detectionLoading) return;
 		this._detectionLoading = true;
@@ -2726,7 +2804,7 @@ class FreeboxCardEditor extends HTMLElement {
 					{ value: "single", label: this._et("layout_single") },
 					{ value: "compact", label: this._et("layout_compact") },
 				] } };
-			} else if (key === "language" || key === "layout") {
+			} else if (key === "language") {
 				selector.selector = { select: { mode: "dropdown", options: [
 					{ value: "auto", label: this._et("auto") },
 					...Object.entries(TRANSLATIONS).map(([code, language]) => ({ value: code, label: language.meta?.name || code })),
@@ -2913,7 +2991,7 @@ class FreeboxCardEditor extends HTMLElement {
 			delete config[key];
 		}
 		this._config = config;
-		if (key === "language") {
+		if (key === "language" || key === "layout") {
 			const openSections = this._getEditorOpenSections();
 			this._rendered = false;
 			this._render();
