@@ -1686,8 +1686,11 @@ class FreeboxCard extends HTMLElement {
 
 	_compactSparkline(series, color) {
 		const end = Date.now();
-		const start = end - 60 * 60 * 1000;
-		const points = this._groupBandwidthHistory(series || [], start, end, 5 * 60 * 1000);
+		const hours = Math.min(Math.max(Number.parseInt(this._config.history_hours, 10) || 24, 1), 168);
+		const start = end - hours * 60 * 60 * 1000;
+		// Keep compact sparklines readable by targeting roughly 12-96 averaged points.
+		const bucketMinutes = hours <= 6 ? 5 : hours <= 12 ? 10 : hours <= 24 ? 15 : hours <= 48 ? 30 : hours <= 96 ? 60 : 120;
+		const points = this._groupBandwidthHistory(series || [], start, end, bucketMinutes * 60 * 1000);
 		if (points.length < 2) return "";
 		const width = 120, height = 26;
 		const maximum = Math.max(1, ...points.map((point) => point.value));
