@@ -50,6 +50,7 @@ Une carte Lovelace responsive pour [Home Assistant](https://www.home-assistant.i
 - Téléphonie avec suivi et réinitialisation des appels manqués
 - Suivi des appareils connectés, déconnectés et désactivés avec listes détaillées
 - Interface personnalisable : sections réorganisables, visibilité, en-tête et fond configurables
+- Trois modes d’affichage : Standard, Section unique et Compact
 - Configurateur visuel responsive, thèmes clair/sombre, français et anglais, avec outils de diagnostic
 
 ## ℹ️ Prérequis
@@ -97,6 +98,27 @@ ou
 
 La carte essaie de sélectionner automatiquement la Freebox en recherchant une entité `device_tracker.freebox` associée à un appareil dont le nom, le modèle ou le fabricant contient `Freebox`.
 
+## 🧩 Modes d’affichage
+
+La carte propose trois modes, sélectionnables avec `layout` ou depuis le configurateur visuel :
+
+- **Standard** (`standard`) : affiche toutes les sections les unes sous les autres. Les sections restent réorganisables et repliables.
+- **Section unique** (`single`) : affiche une seule section à la fois avec un menu de navigation. La dernière section sélectionnée est mémorisée par utilisateur Home Assistant.
+
+| Thème clair | Thème sombre |
+|---|---|
+| <img width="502" height="748" alt="image" src="https://github.com/user-attachments/assets/84140069-4400-410e-bdd7-91acd4055aa7" /> | <img width="504" height="752" alt="image" src="https://github.com/user-attachments/assets/9e1fb2a0-d5fb-4b1d-aaef-83cbf76bb811" /> |
+
+- **Compact** (`compact`) : affiche les informations essentielles dans un format réduit, avec les débits descendant et montant, la latence et leurs mini-graphiques, puis un résumé de l’état Internet, de la disponibilité, des appareils connectés, de l’espace utilisé, des appels manqués et de la température CPU lorsque ces données sont disponibles.
+
+| Thème clair | Thème sombre |
+|---|---|
+| <img width="501" height="269" alt="image" src="https://github.com/user-attachments/assets/2e8a8b09-e5f7-4026-bb7d-2a76e39f2b48" /> | <img width="505" height="272" alt="image" src="https://github.com/user-attachments/assets/1d5f17bb-2899-4cb8-82a7-7ee87c3d3801" /> |
+
+En mode Compact, les mini-graphiques utilisent la période définie par `history_hours`. L’agrégation s’adapte à la durée sélectionnée pour préserver la lisibilité. Le résumé passe automatiquement de trois à deux, puis une colonne selon la largeur réelle de la carte.
+
+Le configurateur masque les options sans effet dans le mode sélectionné. En mode Compact, les groupes **Boutons du bandeau**, **Mesures en temps réel** et **Informations d’état** sont repliables. Les options non prises en charge par la Freebox restent désactivées avec un message explicatif.
+
 ## 📶 Contrôles Wi-Fi et redémarrage
 
 Les boutons **Wi-Fi** et **Redémarrer** permettent de contrôler directement votre Freebox depuis la carte.
@@ -110,46 +132,6 @@ Activez cette permission dans Freebox OS :
 **Paramètres de la Freebox → Gestion des accès → Applications → Home Assistant → Modification des réglages de la Freebox**
 
 Consultez la [documentation officielle de l’intégration Freebox](https://www.home-assistant.io/integrations/freebox) pour plus d’informations.
-
-## ⚙️ Configuration
-
-| Nom | Type | Obligatoire | Valeur par défaut | Description |
-|---|---|---:|---|---|
-| `type` | chaîne | oui | — | `custom:freebox-card` |
-| `device_id` | chaîne | non | détection automatique | Identifiant Home Assistant de l’appareil Freebox |
-| `name` | chaîne | non | `Freebox` | Titre de la carte |
-| `language` | chaîne | non | `auto` | `auto`, `en` ou `fr` |
-| `latency_entity` | chaîne | non | détection automatique | Capteur de latence. Si absent, la carte recherche le premier capteur Ping contenant `average` ou `moyen` |
-| `download_bandwidth` | nombre | non | — | Débit descendant maximal en Mbit/s, utilisé pour calculer le pourcentage de la jauge |
-| `upload_bandwidth` | nombre | non | — | Débit montant maximal en Mbit/s, utilisé pour calculer le pourcentage de la jauge |
-| `show_live_metrics` | booléen | non | `true` | Afficher les mesures de bande passante en temps réel |
-| `show_bandwidth_history` | booléen | non | `true` | Afficher le graphique d’historique de la bande passante |
-| `show_network_quality_history` | booléen | non | `true` | Afficher le graphique d’historique de la latence et de la perte de paquets |
-| `show_history_maximums` | booléen | non | `true` | Afficher les valeurs maximales sur le graphique |
-| `history_hours` | nombre | non | `24` | Nombre d’heures affichées dans les graphiques d’historique, de 1 à 168 |
-| `section_order` | liste | non | voir ci-dessous | Ordre d’affichage des sections |
-| `show_internet` | booléen | non | `true` | Afficher les informations de bande passante |
-| `show_system` | booléen | non | `true` | Afficher les informations système et les actions |
-| `show_admin_console_button` | booléen | non | `true` | Afficher le bouton d’accès à Freebox OS dans la section Système |
-| `admin_console_ip` | chaîne | non | — | Adresse IPv4 optionnelle utilisée pour accéder à Freebox OS lorsque `mafreebox.freebox.fr` n’est pas accessible |
-| `show_hardware` | booléen | non | `true` | Afficher le stockage, le RAID, les ventilateurs et les températures |
-| `show_telephony` | booléen | non | `true` | Afficher les appels manqués |
-| `show_devices` | booléen | non | `true` | Afficher les statistiques et listes des appareils |
-| `show_debug` | booléen | non | `false` | Afficher les informations de diagnostic et les actions d’export |
-| `show_header` | booléen | non | `true` | Afficher l’icône et le titre de la carte |
-| `show_card_background` | booléen | non | `true` | Afficher le fond, les marges internes, la bordure et l’ombre de la carte |
-
-Ordre des sections par défaut :
-
-```yaml
-section_order:
-  - internet
-  - system
-  - hardware
-  - telephony
-  - devices
-  - debug
-```
 
 ## 📈 Graphiques d’historique
 
@@ -177,6 +159,47 @@ La section **Système** propose un bouton ouvrant l’interface d’administrati
 - Sans configuration spécifique, le bouton utilise `http://mafreebox.freebox.fr/`
 - Si votre VPN ou votre DNS bloque cette adresse, renseignez `admin_console_ip` avec une adresse IPv4 locale, par exemple `192.168.1.254`
 - Le bouton Freebox OS peut être masqué avec `show_admin_console_button: false`
+
+## ⚙️ Configuration
+
+| Nom | Type | Obligatoire | Valeur par défaut | Description |
+|---|---|---:|---|---|
+| `type` | chaîne | oui | — | `custom:freebox-card` |
+| `device_id` | chaîne | non | détection automatique | Identifiant Home Assistant de l’appareil Freebox |
+| `name` | chaîne | non | `Freebox` | Titre de la carte |
+| `language` | chaîne | non | `auto` | `auto`, `en` ou `fr` |
+| `layout` | chaîne | non | `standard` | Mode d’affichage : `standard`, `single` ou `compact` |
+| `latency_entity` | chaîne | non | détection automatique | Capteur de latence. Si absent, la carte recherche le premier capteur Ping contenant `average` ou `moyen` |
+| `download_bandwidth` | nombre | non | — | Débit descendant maximal en Mbit/s, utilisé pour calculer le pourcentage de la jauge |
+| `upload_bandwidth` | nombre | non | — | Débit montant maximal en Mbit/s, utilisé pour calculer le pourcentage de la jauge |
+| `show_live_metrics` | booléen | non | `true` | Afficher les mesures de bande passante en temps réel ; contrôle Download et Upload en mode Compact |
+| `show_bandwidth_history` | booléen | non | `true` | Afficher le graphique d’historique de la bande passante |
+| `show_network_quality_history` | booléen | non | `true` | Afficher l’historique de la latence et de la perte de paquets ; contrôle la tuile Latence en mode Compact |
+| `show_history_maximums` | booléen | non | `true` | Afficher les valeurs maximales sur le graphique |
+| `history_hours` | nombre | non | `24` | Nombre d’heures affichées dans les graphiques et mini-graphiques, de 1 à 168 |
+| `section_order` | liste | non | voir ci-dessous | Ordre d’affichage des sections |
+| `show_internet` | booléen | non | `true` | Afficher les informations de bande passante |
+| `show_system` | booléen | non | `true` | Afficher les informations système ; contrôle l’état Internet et la disponibilité en mode Compact |
+| `show_admin_console_button` | booléen | non | `true` | Afficher le bouton Freebox OS dans la section Système ou dans la zone d’actions du mode Compact |
+| `admin_console_ip` | chaîne | non | — | Adresse IPv4 optionnelle utilisée pour accéder à Freebox OS lorsque `mafreebox.freebox.fr` n’est pas accessible |
+| `show_hardware` | booléen | non | `true` | Afficher le stockage, le RAID, les ventilateurs et les températures |
+| `show_telephony` | booléen | non | `true` | Afficher la section Téléphonie ; contrôle les appels manqués en mode Compact |
+| `show_devices` | booléen | non | `true` | Afficher les statistiques et listes des appareils ; contrôle le compteur d’appareils en mode Compact |
+| `show_debug` | booléen | non | `false` | Afficher les informations de diagnostic et les actions d’export |
+| `show_header` | booléen | non | `true` | Afficher l’icône et le titre de la carte ; les boutons du mode Compact restent indépendants |
+| `show_card_background` | booléen | non | `true` | Afficher le fond, les marges internes, la bordure et l’ombre de la carte |
+
+Ordre des sections par défaut :
+
+```yaml
+section_order:
+  - internet
+  - system
+  - hardware
+  - telephony
+  - devices
+  - debug
+```
 
 ## 🛠️ Dépannage
 
