@@ -50,6 +50,7 @@ A responsive Lovelace card for [Home Assistant](https://www.home-assistant.io/) 
 - Telephony with missed call monitoring and reset
 - Connected, disconnected, and disabled device tracking with detailed lists
 - Customizable interface with reorderable sections, visibility controls, and optional header and background
+- Three display modes: Standard, Single section, and Compact
 - Responsive visual editor with light/dark themes, English and French support, and diagnostic tools
 
 ## ℹ️ Requirements
@@ -59,7 +60,7 @@ A responsive Lovelace card for [Home Assistant](https://www.home-assistant.io/) 
 - A Freebox device with a `device_tracker.freebox` or `device_tracker.freebox_*` entity
 - Optional: [Ping (ICMP)](https://www.home-assistant.io/integrations/ping) integration configured for automatic latency detection and display
 
-Some features depend on the entities exposed by your Freebox model and integration version. Unavailable options are automatically disabled in the visual editor, and their corresponding actions are not displayed on the card..
+Some features depend on the entities exposed by your Freebox model and integration version. Unavailable options are automatically disabled in the visual editor, and their corresponding actions are not displayed on the card.
 
 ## 📦 Installation
 
@@ -97,6 +98,27 @@ or
 
 The card attempts to select the Freebox automatically by locating a `device_tracker.freebox` entity associated with a device whose name, model, or manufacturer contains `Freebox`.
 
+## 🧩 Display modes
+
+The card provides three modes, selectable with `layout` or from the visual editor:
+
+- **Standard** (`standard`): displays all sections vertically. Sections remain reorderable and collapsible.
+- **Single section** (`single`): displays one section at a time with a navigation menu. The last selected section is remembered for each Home Assistant user.
+
+| Light Theme | Dark Theme |
+|---|---|
+| <img width="503" height="748" alt="image" src="https://github.com/user-attachments/assets/8112567c-fe00-4d02-9afb-db562add76b7" /> | <img width="504" height="750" alt="image" src="https://github.com/user-attachments/assets/eee07e22-f241-4ff2-ac53-d11252e29e69" /> |
+
+- **Compact** (`compact`): displays essential information in a reduced format, with real-time download, upload, and latency values and their sparklines, followed by a summary of Internet status, uptime, connected devices, used storage, missed calls, and CPU temperature when those values are available.
+
+| Light Theme | Dark Theme |
+|---|---|
+| <img width="502" height="269" alt="image" src="https://github.com/user-attachments/assets/f38f2d76-16af-4920-9068-40d387d43389" /> | <img width="504" height="273" alt="image" src="https://github.com/user-attachments/assets/4194c7ac-0411-426d-9c40-f3ee97fee8f3" /> |
+
+In Compact mode, sparklines use the period defined by `history_hours`. Aggregation adapts to the selected duration to preserve readability. The status summary automatically changes from three to two, then one column based on the card’s actual width.
+
+The visual editor hides settings that have no effect in the selected mode. In Compact mode, the **Header buttons**, **Live metrics**, and **Status information** groups are collapsible. Options unsupported by the selected Freebox remain disabled with an explanatory message.
+
 ## 📶 Wi-Fi and reboot controls
 
 The **Wi-Fi** and **Reboot** buttons let you control your Freebox directly from the card.
@@ -110,46 +132,6 @@ Enable this permission in Freebox OS:
 **Paramètres de la Freebox → Gestion des accès → Applications → Home Assistant → Modification des réglages de la Freebox**
 
 See the [official Freebox integration documentation](https://www.home-assistant.io/integrations/freebox) for more information.
-
-## ⚙️ Configuration
-
-| Name | Type | Required | Default | Description |
-|---|---|---:|---|---|
-| `type` | string | yes | — | `custom:freebox-card` |
-| `device_id` | string | no | auto-detected | Home Assistant device ID of the Freebox |
-| `name` | string | no | `Freebox` | Card title |
-| `language` | string | no | `auto` | `auto`, `en`, or `fr` |
-| `latency_entity` | string | no | auto-detected | Latency sensor. If not configured, the card automatically selects the first Ping integration sensor containing `average` or `moyen` in its name |
-| `download_bandwidth` | number | no | — | Maximum download bandwidth in Mbit/s, used to calculate the gauge percentage |
-| `upload_bandwidth` | number | no | — | Maximum upload bandwidth in Mbit/s, used to calculate the gauge percentage |
-| `show_live_metrics` | boolean | no | `true` | Show real-time bandwidth metrics |
-| `show_bandwidth_history` | boolean | no | `true` | Show the bandwidth history chart |
-| `show_network_quality_history` | boolean | no | `true` | Show the latency and packet loss history chart |
-| `show_history_maximums` | boolean | no | `true` | Show maximum values on the chart |
-| `history_hours` | number | no | `24` | Number of hours displayed in the history charts, from 1 to 168 |
-| `section_order` | list | no | see below | Display order for card sections |
-| `show_internet` | boolean | no | `true` | Show bandwidth information |
-| `show_system` | boolean | no | `true` | Show system information and actions |
-| `show_admin_console_button` | boolean | no | `true` | Show the Freebox OS access button in the System section |
-| `admin_console_ip` | string | no | — | Optional IPv4 address used to access Freebox OS when `mafreebox.freebox.fr` is unavailable |
-| `show_hardware` | boolean | no | `true` | Show storage, RAID, fans, and temperatures |
-| `show_telephony` | boolean | no | `true` | Show missed call information |
-| `show_devices` | boolean | no | `true` | Show device tracker statistics and lists |
-| `show_debug` | boolean | no | `false` | Show diagnostic information and export actions |
-| `show_header` | boolean | no | `true` | Show the card icon and title |
-| `show_card_background` | boolean | no | `true` | Show the outer card background, padding, border, and shadow |
-
-Default section order:
-
-```yaml
-section_order:
-  - internet
-  - system
-  - hardware
-  - telephony
-  - devices
-  - debug
-```
 
 ## 📈 History charts
 
@@ -177,6 +159,47 @@ The **System** section provides a button that opens the Freebox OS administratio
 - Without a custom setting, the button uses `http://mafreebox.freebox.fr/`
 - If a VPN or DNS configuration blocks that address, set `admin_console_ip` to a local IPv4 address, for example `192.168.1.254`
 - The Freebox OS button can be hidden with `show_admin_console_button: false`
+
+## ⚙️ Configuration
+
+| Name | Type | Required | Default | Description |
+|---|---|---:|---|---|
+| `type` | string | yes | — | `custom:freebox-card` |
+| `device_id` | string | no | auto-detected | Home Assistant device ID of the Freebox |
+| `name` | string | no | `Freebox` | Card title |
+| `language` | string | no | `auto` | `auto`, `en`, or `fr` |
+| `layout` | string | no | `standard` | Display mode: `standard`, `single`, or `compact` |
+| `latency_entity` | string | no | auto-detected | Latency sensor. If not configured, the card automatically selects the first Ping integration sensor containing `average` or `moyen` in its name |
+| `download_bandwidth` | number | no | — | Maximum download bandwidth in Mbit/s, used to calculate the gauge percentage |
+| `upload_bandwidth` | number | no | — | Maximum upload bandwidth in Mbit/s, used to calculate the gauge percentage |
+| `show_live_metrics` | boolean | no | `true` | Show real-time bandwidth metrics; controls Download and Upload in Compact mode |
+| `show_bandwidth_history` | boolean | no | `true` | Show the bandwidth history chart |
+| `show_network_quality_history` | boolean | no | `true` | Show latency and packet loss history; controls the Latency tile in Compact mode |
+| `show_history_maximums` | boolean | no | `true` | Show maximum values on the chart |
+| `history_hours` | number | no | `24` | Number of hours displayed in history charts and sparklines, from 1 to 168 |
+| `section_order` | list | no | see below | Display order for card sections |
+| `show_internet` | boolean | no | `true` | Show bandwidth information |
+| `show_system` | boolean | no | `true` | Show system information; controls Internet status and uptime in Compact mode |
+| `show_admin_console_button` | boolean | no | `true` | Show the Freebox OS button in the System section or the Compact action area |
+| `admin_console_ip` | string | no | — | Optional IPv4 address used to access Freebox OS when `mafreebox.freebox.fr` is unavailable |
+| `show_hardware` | boolean | no | `true` | Show storage, RAID, fans, and temperatures |
+| `show_telephony` | boolean | no | `true` | Show Telephony information; controls missed calls in Compact mode |
+| `show_devices` | boolean | no | `true` | Show device tracker statistics and lists; controls the device count in Compact mode |
+| `show_debug` | boolean | no | `false` | Show diagnostic information and export actions |
+| `show_header` | boolean | no | `true` | Show the card icon and title; Compact action buttons remain independent |
+| `show_card_background` | boolean | no | `true` | Show the outer card background, padding, border, and shadow |
+
+Default section order:
+
+```yaml
+section_order:
+  - internet
+  - system
+  - hardware
+  - telephony
+  - devices
+  - debug
+```
 
 ## 🛠️ Troubleshooting
 
