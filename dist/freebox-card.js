@@ -2169,7 +2169,7 @@ class FreeboxCard extends HTMLElement {
 			.compact-metric > span { position:relative; z-index:1; display:contents; }
 			.compact-metric small { grid-column:2; grid-row:1; align-self:start; overflow:hidden; color:var(--secondary-text-color); font-size:9px; line-height:1.1; text-overflow:ellipsis; white-space:nowrap; }
 			.compact-metric strong { grid-column:2; grid-row:2; align-self:start; margin-top:0; overflow:hidden; color:var(--primary-text-color); font-family:Helvetica,Arial,sans-serif; font-size:14px; font-weight:700; line-height:1.2; text-overflow:ellipsis; white-space:nowrap; }
-			.compact-status { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); align-items:center; gap:8px 14px; padding:4px 4px 0; }
+			.compact-status { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); align-items:center; gap:8px 14px; padding:10px 12px; border:1px solid var(--divider-color); border-radius:12px; background:var(--card-background-color); }
 			.compact-status-item { display:flex; align-items:center; min-width:0; width:100%; color:var(--primary-text-color); font-size:11px; white-space:nowrap; }
 			.compact-status-content { display:flex; align-items:center; gap:5px; width:max-content; min-width:min(100%,140px); }
 			.compact-status-item:nth-child(3n+1) { justify-content:flex-start; }
