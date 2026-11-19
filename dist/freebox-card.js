@@ -1704,9 +1704,8 @@ class FreeboxCard extends HTMLElement {
 
 	_compactMetric(entityId, icon, label, value, tone = "", series = []) {
 		if (!entityId || !this._hass.states[entityId]) return "";
-		const latencyValue = tone === "latency" ? Number.parseFloat(this._hass.states[entityId]?.state) : NaN;
-		const color = tone === "download" ? "#2196f3" : tone === "upload" ? "#4caf50" : latencyValue > 30 ? "#EF4444" : latencyValue > 10 ? "#F59E0B" : "#8B5CF6";
-		return `<button type="button" class="compact-metric ${tone}" data-more-info="${this._escape(entityId)}" style="--compact-metric-color:${color}">${this._compactSparkline(series, tone === "latency" ? "#8B5CF6" : color)}<ha-icon icon="${icon}"></ha-icon><span><small>${this._escape(label)}</small><strong>${this._escape(value)}</strong></span></button>`;
+		const color = tone === "download" ? "#2196f3" : tone === "upload" ? "#4caf50" : "#8B5CF6";
+		return `<button type="button" class="compact-metric ${tone}" data-more-info="${this._escape(entityId)}">${this._compactSparkline(series, color)}<ha-icon icon="${icon}"></ha-icon><span><small>${this._escape(label)}</small><strong>${this._escape(value)}</strong></span></button>`;
 	}
 
 	_compactStatus(icon, label, value, entityId = "") {
@@ -2161,26 +2160,26 @@ class FreeboxCard extends HTMLElement {
 			.compact-network { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
 			.compact-network-2 { grid-template-columns:repeat(2,minmax(0,1fr)); }
 			.compact-network-1 { grid-template-columns:1fr; }
-			.compact-metric { position:relative; display:grid; grid-template-columns:20px minmax(0,1fr); align-items:start; gap:6px; min-width:0; min-height:58px; padding:8px 9px 7px; overflow:hidden; border:1px solid var(--divider-color); border-radius:12px; color:var(--primary-text-color); background:var(--card-background-color); font:inherit; text-align:left; }
+			.compact-metric { position:relative; display:grid; grid-template-columns:20px minmax(0,1fr); grid-template-rows:11px 17px; align-items:start; column-gap:6px; row-gap:2px; min-width:0; min-height:58px; padding:8px 9px 7px; overflow:hidden; border:1px solid var(--divider-color); border-radius:12px; color:var(--primary-text-color); background:var(--card-background-color); font:inherit; text-align:left; }
 			.compact-sparkline { position:absolute; z-index:0; left:0; right:0; bottom:0; width:100%; height:27px; pointer-events:none; }
 			.compact-sparkline-area { opacity:.10; stroke:none; }
 			.compact-sparkline-line { fill:none; opacity:.72; stroke-width:1; vector-effect:non-scaling-stroke; }
-			.compact-metric > ha-icon { position:relative; z-index:1; grid-row:1; --mdc-icon-size:18px; width:20px; color:var(--freebox-accent); }
-			.compact-metric.download > ha-icon { color:#2196f3; } .compact-metric.upload > ha-icon { color:#4caf50; } .compact-metric.latency > ha-icon, .compact-metric.latency strong { color:var(--compact-metric-color,#8B5CF6); }
-			.compact-metric > span { position:relative; z-index:1; display:grid; min-width:0; }
-			.compact-metric small { overflow:hidden; color:var(--secondary-text-color); font-size:9px; line-height:1.1; text-overflow:ellipsis; white-space:nowrap; }
-			.compact-metric strong { margin-top:2px; overflow:hidden; font-size:14px; font-weight:700; line-height:1.2; text-overflow:ellipsis; white-space:nowrap; }
+			.compact-metric > ha-icon { position:relative; z-index:1; grid-column:1; grid-row:1 / 3; align-self:start; --mdc-icon-size:18px; width:20px; color:var(--freebox-accent); }
+			.compact-metric.download > ha-icon { color:#2196f3; } .compact-metric.upload > ha-icon { color:#4caf50; } .compact-metric.latency > ha-icon { color:#8B5CF6; }
+			.compact-metric > span { position:relative; z-index:1; display:contents; }
+			.compact-metric small { grid-column:2; grid-row:1; align-self:start; overflow:hidden; color:var(--secondary-text-color); font-size:9px; line-height:1.1; text-overflow:ellipsis; white-space:nowrap; }
+			.compact-metric strong { grid-column:2; grid-row:2; align-self:start; margin-top:0; overflow:hidden; color:var(--primary-text-color); font-family:Helvetica,Arial,sans-serif; font-size:14px; font-weight:700; line-height:1.2; text-overflow:ellipsis; white-space:nowrap; }
 			.compact-status { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); align-items:center; gap:8px 14px; padding:4px 4px 0; }
 			.compact-status-item { display:flex; align-items:center; min-width:0; width:100%; color:var(--primary-text-color); font-size:11px; white-space:nowrap; }
-			.compact-status-content { display:grid; grid-template-columns:15px minmax(0,1fr) auto; align-items:center; column-gap:5px; width:155px; min-width:min(100%,155px); }
+			.compact-status-content { display:flex; align-items:center; gap:5px; width:max-content; min-width:min(100%,140px); }
 			.compact-status-item:nth-child(3n+1) { justify-content:flex-start; }
 			.compact-status-item:nth-child(3n+2) { justify-content:center; }
 			.compact-status-item:nth-child(3n) { justify-content:flex-end; }
 			.compact-status-item[role="button"] { cursor:pointer; }
 			.compact-status-item ha-icon { --mdc-icon-size:15px; flex:0 0 15px; color:var(--secondary-text-color); }
-			.compact-status-item span { min-width:0; overflow:hidden; color:var(--secondary-text-color); text-overflow:ellipsis; white-space:nowrap; }
-			.compact-status-item strong { justify-self:end; font-weight:600; white-space:nowrap; }
-			@container (max-width:360px) { .compact-network { grid-template-columns:repeat(2,minmax(0,1fr)); } .compact-network .compact-metric:last-child:nth-child(odd) { grid-column:1 / -1; } .compact-status { grid-template-columns:1fr; } .compact-status-item:nth-child(n) { justify-content:flex-start; } .compact-status-content { width:auto; min-width:0; grid-template-columns:15px minmax(0,1fr) auto; } }
+			.compact-status-item span { color:var(--secondary-text-color); }
+			.compact-status-item strong { margin-left:auto; font-weight:600; text-align:right; }
+			@container (max-width:360px) { .compact-network { grid-template-columns:repeat(2,minmax(0,1fr)); } .compact-network .compact-metric:last-child:nth-child(odd) { grid-column:1 / -1; } .compact-status { grid-template-columns:1fr; } .compact-status-item:nth-child(n) { justify-content:flex-start; } .compact-status-content { min-width:0; } }
 			.panel { border:1px solid var(--divider-color); border-radius:16px; background:color-mix(in srgb, var(--secondary-background-color) 72%, transparent); }
 			.internet-panel, .detail-panel { padding:15px; }
 			.section-title { display:flex; align-items:center; gap:8px; margin-bottom:13px; color:var(--secondary-text-color); font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
