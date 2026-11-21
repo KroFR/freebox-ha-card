@@ -120,6 +120,7 @@ const TRANSLATIONS = {
 			show_bandwidth_history: "Show bandwidth history",
 			show_network_quality_history: "Show latency and packet loss history",
 			history_hours: "History period (hours)",
+			hardware_history_hours: "Hardware history period (hours)",
 			internet: "Bandwidth",
 			system: "System",
 			hardware: "Hardware",
@@ -256,6 +257,7 @@ const TRANSLATIONS = {
 			show_bandwidth_history: "Afficher l’historique de la bande passante",
 			show_network_quality_history: "Afficher l’historique de la latence et de la perte de paquets",
 			history_hours: "Période de l’historique (heures)",
+			hardware_history_hours: "Période de l’historique matériel (heures)",
 			internet: "Bande passante",
 			system: "Système",
 			hardware: "Matériel",
@@ -367,6 +369,7 @@ class FreeboxCard extends HTMLElement {
 		show_live_metrics: true,
 		show_history_maximums: true,
 		history_hours: "24",
+		hardware_history_hours: "24",
 	};
 
 	static getConfigElement() {
@@ -391,6 +394,7 @@ class FreeboxCard extends HTMLElement {
 		this._discoveryResult = null;
 		this._bandwidthHistory = { key: "", loadedAt: 0, loading: false, series: {} };
 		this._networkQualityHistory = { key: "", loadedAt: 0, loading: false, series: {} };
+		this._hardwareHistory = { key: "", loadedAt: 0, loading: false, series: {} };
 		this._lastRenderSignature = "";
 		this._lastStructureSignature = "";
 		this._rendered = false;
@@ -412,7 +416,7 @@ class FreeboxCard extends HTMLElement {
 	setConfig(config) {
 		const source = config && typeof config === "object" ? config : {};
 		const safeConfig = {};
-		const stringFields = ["name", "device_id", "layout", "latency_entity", "packet_loss_entity", "download_bandwidth", "upload_bandwidth", "history_hours", "admin_console_ip"];
+		const stringFields = ["name", "device_id", "layout", "latency_entity", "packet_loss_entity", "download_bandwidth", "upload_bandwidth", "history_hours", "hardware_history_hours", "admin_console_ip"];
 		const booleanFields = ["show_internet", "show_system", "show_hardware", "show_storage_raid", "show_fans", "show_temperatures", "show_telephony", "show_devices", "show_connected_tile", "show_disconnected_tile", "show_disabled_tile", "show_total_tile", "show_connected_devices_list", "show_disconnected_devices_list", "show_debug", "show_header", "show_card_background", "show_wifi_button", "show_reboot_button", "show_admin_console_button", "show_bandwidth_history", "show_network_quality_history", "show_live_metrics", "show_history_maximums"];
 		for (const key of stringFields)
 			if (typeof source[key] === "string") safeConfig[key] = source[key].slice(0, 512);
@@ -1874,6 +1878,72 @@ class FreeboxCard extends HTMLElement {
 		return `<div class="network-quality-history"><div class="history-title"><span>${this._t("network_quality_history")}</span><small>${this._t("history_method")} · ${hours} h</small></div><div class="quality-chart" data-history-start="${start}" data-history-end="${end}" data-latency-max="${latencyMax}" data-loss-max="${lossMax}"><div class="quality-unit left">${this._t("latency")} (ms)</div><div class="quality-y left">${leftLabels}</div><svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none"><defs><linearGradient id="freebox-latency-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#8B5CF6" stop-opacity=".42"></stop><stop offset="100%" stop-color="#8B5CF6" stop-opacity=".06"></stop></linearGradient></defs>${grid}${latencyArea ? `<path class="quality-latency-area" d="${latencyArea}"></path>` : ""}${bars}${segments}${latencyMaxMarker}${lossMaxMarker}</svg><div class="quality-y right">${rightLabels}</div><div class="quality-unit right">${this._t("packet_loss")} (%)</div><div class="quality-hover-overlay"></div><div class="quality-cursor" hidden></div><span class="quality-hover-dot quality-hover-latency" hidden></span><span class="quality-hover-dot quality-hover-loss" hidden></span><div class="quality-tooltip" hidden></div><div class="history-x" data-history-hours="${hours}"></div></div></div>`;
 	}
 
+	_getHardwareHistoryHours() {
+		return Math.min(Math.max(Number.parseInt(this._config.hardware_history_hours, 10) || 24, 1), 168);
+	}
+
+	_hardwareSparkline(entityId, type, color) {
+		const hours = this._getHardwareHistoryHours();
+		const end = Date.now(), start = end - hours * 3600000;
+		const points = this._groupBandwidthHistory(this._hardwareHistory.series[entityId] || [], start, end, 5 * 60 * 1000);
+		const raw = Number.parseFloat(this._hass?.states?.[entityId]?.state);
+		const current = Number.isFinite(raw) ? (type === "storage" ? Math.max(0, Math.min(100, 100 - raw)) : raw) : null;
+		if (points.length && points[0].timestamp > start) points.unshift({ timestamp: start, value: points[0].value });
+		if (Number.isFinite(current)) {
+			const last = points.at(-1);
+			if (!last || end - last.timestamp > 1000) points.push({ timestamp: end, value: current });
+			else { last.timestamp = end; last.value = current; }
+		}
+		if (points.length === 1) {
+			points.unshift({ timestamp: start, value: points[0].value });
+			points[1].timestamp = end;
+		}
+		const empty = `<svg class="hardware-sparkline" viewBox="0 0 120 28" preserveAspectRatio="none" aria-hidden="true"><path class="hardware-sparkline-area" d=""></path><path class="hardware-sparkline-line" d="" style="stroke:${color}"></path></svg>`;
+		if (points.length < 2) return empty;
+		const width = 120, height = 28;
+		const values = points.map((point) => point.value);
+		const rawMin = Math.min(...values), rawMax = Math.max(...values);
+		const minimumSpan = type === "fan" ? 20 : 2;
+		const span = Math.max(rawMax - rawMin, minimumSpan);
+		const padding = span * 0.1;
+		const scaleMin = rawMin - padding, scaleMax = rawMax + padding;
+		const scaleRange = Math.max(scaleMax - scaleMin, 0.000001);
+		const coords = (point) => ({ x: ((point.timestamp - start) / Math.max(end - start, 1)) * width, y: height - Math.min(Math.max((point.value - scaleMin) / scaleRange, 0), 1) * (height - 2) - 1 });
+		const path = points.map((point, index) => { const c = coords(point); return `${index ? "L" : "M"}${c.x.toFixed(1)},${c.y.toFixed(1)}`; }).join(" ");
+		const first = coords(points[0]), last = coords(points.at(-1));
+		const area = `${path} L${last.x.toFixed(1)},${height} L${first.x.toFixed(1)},${height} Z`;
+		return `<svg class="hardware-sparkline" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true"><path class="hardware-sparkline-area" d="${area}" style="fill:${color}"></path><path class="hardware-sparkline-line" d="${path}" style="stroke:${color}"></path></svg>`;
+	}
+	async _loadHardwareHistory(entityTypes) {
+		if (!this._hass?.callApi) return;
+		const entries = Object.entries(entityTypes).filter(([id]) => this._isValidEntityId(id));
+		if (!entries.length) return;
+		const hours = this._getHardwareHistoryHours();
+		const key = `${entries.map(([id,type]) => `${id}:${type}`).sort().join("|")}|${hours}`;
+		if ((this._hardwareHistory.key === key && Date.now() - this._hardwareHistory.loadedAt < 300000) || this._hardwareHistory.loading) return;
+		this._hardwareHistory = { ...this._hardwareHistory, key, loading: true };
+		try {
+			const end = new Date(), start = new Date(end.getTime() - hours * 3600000);
+			const query = new URLSearchParams({ filter_entity_id: entries.map(([id]) => id).join(","), end_time: end.toISOString(), significant_changes_only: "0" });
+			const history = await this._hass.callApi("GET", `history/period/${start.toISOString()}?${query.toString()}`);
+			const series = Object.fromEntries(entries.map(([id,type]) => [id, this._normalizeHistory(history, id)]));
+			this._hardwareHistory = { key, loadedAt: Date.now(), loading: false, series };
+		} catch (error) {
+			console.error("[freebox-card][hardware-history] Unable to load history", error);
+			this._hardwareHistory = { key, loadedAt: Date.now(), loading: false, series: {} };
+		}
+		this._refreshHardwareSparklines();
+	}
+
+	_refreshHardwareSparklines() {
+		this.shadowRoot?.querySelectorAll("[data-hardware-history-entity]").forEach((tile) => {
+			const template = document.createElement("template");
+			template.innerHTML = this._hardwareSparkline(tile.dataset.hardwareHistoryEntity, tile.dataset.hardwareHistoryType, tile.dataset.hardwareHistoryColor);
+			const fresh = template.content.firstElementChild, current = tile.querySelector(".hardware-sparkline");
+			if (fresh && current) current.replaceWith(fresh);
+		});
+	}
+
 	_compactSparkline(series, color) {
 		const end = Date.now();
 		const hours = Math.min(Math.max(Number.parseInt(this._config.history_hours, 10) || 24, 1), 168);
@@ -2031,6 +2101,8 @@ class FreeboxCard extends HTMLElement {
 		const storage = sortEntities((e.hardwareStorage || []).filter(isAvailable));
 		const raid = sortEntities((e.hardwareRaid || []).filter(isAvailable));
 		if (!temperatures.length && !fans.length && !storage.length && !raid.length) return "";
+		const historyEntities = Object.fromEntries([...fans.map((id) => [id, "fan"]), ...temperatures.map((id) => [id, "temperature"])]);
+		setTimeout(() => this._loadHardwareHistory(historyEntities), 0);
 
 		return `<section class="panel detail-panel hardware-panel" data-section-key="hardware">
 			<div class="section-title"><ha-icon icon="mdi:memory"></ha-icon>${this._t("hardware")}</div>
@@ -2077,7 +2149,11 @@ class FreeboxCard extends HTMLElement {
 			? `${new Intl.NumberFormat(this._getLanguage(), { maximumFractionDigits: 1 }).format(Math.max(0, Math.min(100, usedValue ?? 0)))} ${unit}`
 			: this._formatEntity(entityId);
 		const description = isStorage ? this._t("used_space") : label;
-		return `<button type="button" class="hardware-tile ${type}" data-more-info="${this._escape(entityId)}"><div class="hardware-gauge"><svg viewBox="0 0 44 44" aria-hidden="true"><circle cx="22" cy="22" r="${radius}" class="hardware-track"></circle><circle cx="22" cy="22" r="${radius}" class="hardware-value" style="stroke:${color};stroke-dasharray:${circumference};stroke-dashoffset:${offset}"></circle></svg><ha-icon icon="${icon}" style="color:${color};--hardware-fan-delay:${fanAnimationDelay}ms"></ha-icon></div><strong>${this._escape(value)}</strong><span title="${this._escape(description)}">${this._escape(description)}</span></button>`;
+		if (isStorage) {
+			return `<button type="button" class="hardware-tile storage" data-more-info="${this._escape(entityId)}"><div class="hardware-gauge"><svg viewBox="0 0 44 44" aria-hidden="true"><circle cx="22" cy="22" r="${radius}" class="hardware-track"></circle><circle cx="22" cy="22" r="${radius}" class="hardware-value" style="stroke:${color};stroke-dasharray:${circumference};stroke-dashoffset:${offset}"></circle></svg><ha-icon icon="${icon}" style="color:${color}"></ha-icon></div><strong>${this._escape(value)}</strong><span title="${this._escape(description)}">${this._escape(description)}</span></button>`;
+		}
+		const sparkline = this._hardwareSparkline(entityId, type, color);
+		return `<button type="button" class="hardware-tile hardware-mini-graph ${type}" data-more-info="${this._escape(entityId)}" data-hardware-history-entity="${this._escape(entityId)}" data-hardware-history-type="${type}" data-hardware-history-color="${this._escape(color)}">${sparkline}<ha-icon class="hardware-mini-icon" icon="${icon}" style="color:${color}"></ha-icon><span class="hardware-mini-copy"><small title="${this._escape(description)}">${this._escape(description)}</small><strong>${this._escape(value)}</strong></span></button>`;
 	}
 
 	_telephonySection(e) {
@@ -2512,24 +2588,30 @@ class FreeboxCard extends HTMLElement {
 			.hardware-grid.temperature-grid:has(.hardware-tile:nth-child(2):last-child) { grid-template-columns:repeat(2,minmax(0,1fr)); }
 			@media (max-width:520px) { .hardware-grid.temperature-grid:not(:has(.hardware-tile:only-child)) { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 			@media (max-width:360px) { .hardware-grid.temperature-grid:not(:has(.hardware-tile:only-child)) { grid-template-columns:1fr; } }
-			.hardware-tile { display:grid; grid-template-columns:44px minmax(0,1fr); grid-template-rows:auto auto; align-items:center; column-gap:8px; min-width:0; padding:8px; border:1px solid var(--divider-color); border-radius:12px; color:var(--primary-text-color); background:var(--card-background-color); font:inherit; text-align:left; }
+			.hardware-tile { position:relative; display:grid; grid-template-columns:44px minmax(0,1fr); grid-template-rows:auto auto; align-items:center; column-gap:8px; min-width:0; padding:8px; overflow:hidden; border:1px solid var(--divider-color); border-radius:12px; color:var(--primary-text-color); background:var(--card-background-color); font:inherit; text-align:left; }
+			.hardware-mini-graph { grid-template-columns:20px minmax(0,1fr); grid-template-rows:11px 18px; align-items:start; column-gap:6px; row-gap:2px; min-height:60px; padding:8px 9px 7px; }
+			.hardware-mini-icon { position:relative; z-index:2; grid-column:1; grid-row:1 / 3; width:20px; --mdc-icon-size:18px; }
+			.hardware-mini-graph.fan .hardware-mini-icon { animation:hardwareMiniFanSpin 2.4s linear infinite; transform-origin:center; will-change:transform; }
+			@keyframes hardwareMiniFanSpin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
+			@media (prefers-reduced-motion: reduce) { .hardware-mini-graph.fan .hardware-mini-icon { animation:none; } }
+			.hardware-mini-copy { position:relative !important; z-index:2; display:contents; }
+			.hardware-mini-copy small { grid-column:2; grid-row:1; align-self:start; overflow:hidden; color:var(--secondary-text-color); font-size:9px; line-height:1.1; text-overflow:ellipsis; white-space:nowrap; }
+			.hardware-mini-copy strong { grid-column:2; grid-row:2; align-self:start; overflow:hidden; color:var(--primary-text-color); font-family:Helvetica,Arial,sans-serif; font-size:14px; font-weight:700; line-height:1.2; text-overflow:ellipsis; white-space:nowrap; }
 			.hardware-tile.raid-status { display:grid; grid-template-columns:32px minmax(0,1fr); grid-template-rows:auto; align-items:center; gap:8px; min-height:44px; border-color:var(--divider-color); background:var(--card-background-color); }
 			.raid-marker { display:flex; align-items:center; justify-content:center; width:32px; height:32px; color:var(--raid-color); }
 			.raid-marker ha-icon { --mdc-icon-size:21px; }
 			.raid-copy { display:grid; min-width:0; gap:1px; }
 			.raid-copy small { color:var(--secondary-text-color); font-size:9px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; }
 			.raid-copy strong { color:var(--raid-color); font-size:13px; }
-			.hardware-gauge { position:relative; grid-row:1 / 3; width:44px; height:44px; }
+			.hardware-sparkline { position:absolute; z-index:0; left:0; right:0; bottom:0; width:100%; height:28px; pointer-events:none; } .hardware-sparkline-area { opacity:.10; stroke:none; } .hardware-sparkline-line { fill:none; opacity:.74; stroke-width:1; stroke-linecap:round; stroke-linejoin:round; vector-effect:non-scaling-stroke; } .hardware-gauge { position:relative; z-index:1; grid-row:1 / 3; width:44px; height:44px; }
 			.hardware-gauge svg { width:44px; height:44px; transform:rotate(-90deg); }
 			.hardware-gauge ha-icon { position:absolute; left:50%; top:50%; --mdc-icon-size:18px; transform:translate(-50%,-50%); }
 			.hardware-track, .hardware-value { fill:none; stroke-width:4; }
 			.hardware-track { stroke:var(--divider-color); }
 			.hardware-value { stroke-linecap:round; transition:stroke-dashoffset .4s ease,stroke .3s ease; }
-			.hardware-tile strong { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; }
+			.hardware-tile > strong,.hardware-tile > span { position:relative; z-index:1; } .hardware-tile strong { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; }
 			.hardware-tile span { min-width:0; overflow:hidden; color:var(--secondary-text-color); text-overflow:ellipsis; white-space:nowrap; font-size:10px; }
-			.hardware-tile.fan .hardware-gauge ha-icon { animation:hardwareFanSpin 2.4s linear infinite; animation-delay:var(--hardware-fan-delay,0ms); will-change:transform; }
-			@keyframes hardwareFanSpin { from { transform:translate(-50%,-50%) rotate(0deg); } to { transform:translate(-50%,-50%) rotate(360deg); } }
-			@media (prefers-reduced-motion: reduce) { .hardware-tile.fan .hardware-gauge ha-icon { animation:none; } }
+			
 			.secondary-grid { display:grid; grid-template-columns:1fr; gap:12px; }
 			.mini { display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:11px; min-height:66px; padding:12px; }
 			.mini-icon { display:grid; place-items:center; width:39px; height:39px; border-radius:12px; color:var(--secondary-text-color); background:var(--secondary-background-color); }
@@ -2801,7 +2883,7 @@ class FreeboxCardEditor extends HTMLElement {
 				: key === "system"
 					? `<div class="section-suboptions">${this._switchRow("show_admin_console_button", this._et("show_admin_console_button"))}<label>${this._et("admin_console_ip")}<input data-config="admin_console_ip" type="text" inputmode="decimal" autocomplete="off" placeholder="mafreebox.freebox.fr"></label>${this._switchRow("show_wifi_button", this._et("show_wifi_button"), "wifi")}${this._switchRow("show_reboot_button", this._et("show_reboot_button"), "reboot")}</div>`
 				: key === "hardware"
-					? `<div class="section-suboptions"><div class="option-group-content">${this._switchRow("show_storage_raid", this._et("show_storage_raid"), "storage_raid")}${this._switchRow("show_fans", this._et("show_fans"), "fans")}${this._switchRow("show_temperatures", this._et("show_temperatures"), "temperatures")}</div></div>`
+					? `<div class="section-suboptions"><div class="option-group-content">${this._switchRow("show_storage_raid", this._et("show_storage_raid"), "storage_raid")}${this._switchRow("show_fans", this._et("show_fans"), "fans")}${this._switchRow("show_temperatures", this._et("show_temperatures"), "temperatures")}<label>${this._et("hardware_history_hours")}<input data-config="hardware_history_hours" type="number" min="1" max="168" step="1" placeholder="24"></label></div></div>`
 					: key === "devices"
 						? `<div class="section-suboptions"><div class="option-group-content">${this._switchRow("show_connected_tile", this._et("show_connected_tile"))}${this._switchRow("show_disconnected_tile", this._et("show_disconnected_tile"))}${this._switchRow("show_disabled_tile", this._et("show_disabled_tile"))}${this._switchRow("show_total_tile", this._et("show_total_tile"))}${this._switchRow("show_connected_devices_list", this._et("show_connected_devices_list"))}${this._switchRow("show_disconnected_devices_list", this._et("show_disconnected_devices_list"))}</div></div>`
 						: "";
