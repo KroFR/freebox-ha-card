@@ -6,7 +6,7 @@
  * License: MIT
  */
 
-const CARD_VERSION = "2026.11.7";
+const CARD_VERSION = "2026.11.8";
 
 /* ---------------------------------------------------------------------- */
 /*  Languages                                                             */
@@ -386,6 +386,9 @@ class FreeboxCard extends HTMLElement {
 		this._entityRegistry = [];
 		this._registryLoaded = false;
 		this._registryLoading = false;
+		this._discoveryRegistrySource = null;
+		this._discoveryDeviceId = "";
+		this._discoveryResult = null;
 		this._bandwidthHistory = { key: "", loadedAt: 0, loading: false, series: {} };
 		this._networkQualityHistory = { key: "", loadedAt: 0, loading: false, series: {} };
 		this._lastRenderSignature = "";
@@ -802,6 +805,8 @@ class FreeboxCard extends HTMLElement {
 			]);
 			this._deviceRegistry = Array.isArray(devices) ? devices : [];
 			this._entityRegistry = Array.isArray(entities) ? entities : [];
+			this._discoveryRegistrySource = null;
+			this._discoveryResult = null;
 			this._registryLoaded = true;
 		} catch (error) {
 			console.warn("[freebox-card] Unable to load Home Assistant registries", error);
@@ -877,6 +882,48 @@ class FreeboxCard extends HTMLElement {
 		return this._getIntegrationEntities()
 			.map((entity) => entity.entity_id)
 			.filter((entityId) => this._hass.states[entityId]);
+	}
+
+	_discoverFreeboxEntities() {
+		const selectedDeviceId = this._getSelectedDeviceId();
+		const registry = this._entityRegistry.length ? this._entityRegistry : Object.values(this._hass?.entities || {});
+		const source = this._entityRegistry.length ? this._entityRegistry : this._hass?.entities;
+		if (this._discoveryRegistrySource === source && this._discoveryDeviceId === selectedDeviceId && this._discoveryResult) return this._discoveryResult;
+		const integrationDeviceIds = this._getIntegrationDeviceIds();
+		const result = { hardwareTemperatures: [], hardwareFans: [], hardwareStorage: [], hardwareRaid: [], trackers: [] };
+		const candidates = registry.filter((entry) => entry?.entity_id && (entry.platform === "freebox" || integrationDeviceIds.has(entry.device_id)));
+		const activeCandidates = candidates.filter((entry) => !entry.disabled_by);
+		const assign = (key, entry) => { result[key] ??= entry.entity_id; };
+		result.trackers = candidates.filter((entry) => entry.entity_id.startsWith("device_tracker."));
+		for (const entry of activeCandidates) {
+			const state = this._hass?.states?.[entry.entity_id];
+			if (!state) continue;
+			const domain = entry.entity_id.split(".")[0];
+			const translationKey = String(entry.translation_key || "").toLowerCase();
+			const deviceClass = String(state.attributes?.device_class || "").toLowerCase();
+			const unit = String(state.attributes?.unit_of_measurement || "").trim().toLowerCase();
+			const text = [translationKey, entry.entity_id, entry.name, entry.original_name, state.attributes?.friendly_name].filter(Boolean).join(" ").toLowerCase();
+			if (domain === "device_tracker") continue;
+			if (domain === "sensor" && deviceClass === "temperature") result.hardwareTemperatures.push(entry.entity_id);
+			if (domain === "sensor" && unit === "rpm") result.hardwareFans.push(entry.entity_id);
+			const isDataSizeStorage = domain === "sensor" && state.attributes?.state_class === "measurement" && deviceClass === "data_size" && /free|available|libre|storage|disk/.test(text);
+			const isFreeSpacePercent = domain === "sensor" && unit === "%" && /free.?space|espace.?libre|storage.?free|disk.?free/.test(text);
+			if (isDataSizeStorage || isFreeSpacePercent) result.hardwareStorage.push(entry.entity_id);
+			if (domain === "binary_sensor" && /raid/.test(text)) result.hardwareRaid.push(entry.entity_id);
+			if (domain === "sensor" && deviceClass === "duration" && unit === "s") assign("uptime", entry);
+			if ((domain === "sensor" || domain === "binary_sensor") && deviceClass === "connectivity") assign("wanStatus", entry);
+			if (domain === "sensor" && state.attributes?.state_class === "measurement" && unit === "calls") assign("missedCalls", entry);
+			if (domain === "switch" && /wifi|wi-fi/.test(translationKey || text)) assign("wifi", entry);
+			if (domain === "button" && /reboot|restart|redemarrer|redémarrer/.test(translationKey || text)) assign("reboot", entry);
+			if (domain === "button" && /mark.*calls?.*read|marquer.*appels?.*lus?/.test(translationKey || text)) assign("missedCallsReset", entry);
+			if (domain === "sensor" && (/download|telechargement|téléchargement/.test(translationKey) || /download|telechargement|téléchargement/.test(text))) assign("download", entry);
+			if (domain === "sensor" && (/upload|envoi/.test(translationKey) || /upload|envoi/.test(text))) assign("upload", entry);
+		}
+		for (const key of ["hardwareTemperatures", "hardwareFans", "hardwareStorage", "hardwareRaid"]) result[key] = [...new Set(result[key])].sort();
+		this._discoveryRegistrySource = source;
+		this._discoveryDeviceId = selectedDeviceId;
+		this._discoveryResult = result;
+		return result;
 	}
 
 	_find(domain, terms) {
@@ -1041,47 +1088,24 @@ class FreeboxCard extends HTMLElement {
 	}
 
 	_resolveEntities() {
+		const discovered = this._discoverFreeboxEntities();
+		const integrationIds = this._getIntegrationEntityIds();
+		const fallbackUptime = integrationIds.find((id) => id === "sensor.freebox_uptime" || /uptime|temps_de_fonctionnement/i.test(id));
 		return {
-			download: this._find("sensor", ["download", "telechargement", "vitesse_de_telechargement"]),
-			upload: this._find("sensor", ["upload", "envoi", "vitesse_d_envoi"]),
+			download: discovered.download || this._find("sensor", ["download", "telechargement", "vitesse_de_telechargement"]),
+			upload: discovered.upload || this._find("sensor", ["upload", "envoi", "vitesse_d_envoi"]),
 			latency: this._config?.latency_entity && this._hass.states[this._config.latency_entity] ? this._config.latency_entity : this._findPingLatency(),
 			packetLoss: this._findPacketLoss(),
-			uptime: this._getIntegrationEntityIds().find((id) => {
-				if (!id.startsWith("sensor.")) return false;
-				const attributes = this._hass.states[id]?.attributes || {};
-				return attributes.device_class === "duration"
-					&& String(attributes.unit_of_measurement || "").trim().toLowerCase() === "s";
-			}) || this._getIntegrationEntityIds().find((id) => id === "sensor.freebox_uptime" || /uptime|temps_de_fonctionnement/i.test(id)),
-			hardwareTemperatures: this._getIntegrationEntityIds().filter((id) => {
-				if (!id.startsWith("sensor."))
-					return false;
-				const state = this._hass.states[id];
-				const text = `${id} ${state?.attributes?.friendly_name || ""} ${state?.attributes?.device_class || ""}`.toLowerCase();
-				return state?.attributes?.device_class === "temperature" || /temperature|température|cpu/.test(text);
-			}),
-			hardwareFans: this._getIntegrationEntityIds().filter((id) => {
-				if (!id.startsWith("sensor."))
-					return false;
-				const state = this._hass.states[id];
-				const text = `${id} ${state?.attributes?.friendly_name || ""} ${state?.attributes?.unit_of_measurement || ""}`.toLowerCase();
-				return /ventilateur|fan/.test(text) || state?.attributes?.unit_of_measurement === "rpm";
-			}),
-			hardwareStorage: this._getIntegrationEntityIds().filter((id) => {
-				if (!id.startsWith("sensor.")) return false;
-				const state = this._hass.states[id];
-				const text = `${id} ${state?.attributes?.friendly_name || ""}`.toLowerCase();
-				return /free[_\s-]?space|espace libre|disk space|storage/.test(text);
-			}),
-			hardwareRaid: this._getIntegrationEntityIds().filter((id) => {
-				if (!id.startsWith("binary_sensor.")) return false;
-				const state = this._hass.states[id];
-				return /raid/.test(`${id} ${state?.attributes?.friendly_name || ""}`.toLowerCase());
-			}),
-			missedCalls: this._findMissedCalls(),
-			missedCallsReset: this._findMissedCallsReset(),
-			wifi: this._find("switch", ["wifi", "wi-fi"]),
-			reboot: this._find("button", ["reboot", "restart", "redemarrer"]),
-			wanStatus: this._findWanStatus(),
+			uptime: discovered.uptime || fallbackUptime,
+			hardwareTemperatures: discovered.hardwareTemperatures.length ? discovered.hardwareTemperatures : integrationIds.filter((id) => this._hass.states[id]?.attributes?.device_class === "temperature"),
+			hardwareFans: discovered.hardwareFans.length ? discovered.hardwareFans : integrationIds.filter((id) => String(this._hass.states[id]?.attributes?.unit_of_measurement || "").toLowerCase() === "rpm"),
+			hardwareStorage: discovered.hardwareStorage,
+			hardwareRaid: discovered.hardwareRaid,
+			missedCalls: discovered.missedCalls || this._findMissedCalls(),
+			missedCallsReset: discovered.missedCallsReset || this._findMissedCallsReset(),
+			wifi: discovered.wifi || this._find("switch", ["wifi", "wi-fi"]),
+			reboot: discovered.reboot || this._find("button", ["reboot", "restart", "redemarrer"]),
+			wanStatus: discovered.wanStatus || this._findWanStatus(),
 		};
 	}
 
@@ -1163,7 +1187,8 @@ class FreeboxCard extends HTMLElement {
 			? this._deviceRegistry
 			: Object.values(this._hass?.devices || {});
 		const deviceById = new Map(devices.map((device) => [device.id, device]));
-		const trackers = integrationEntities.filter((entity) => entity.entity_id.startsWith("device_tracker."));
+		const discoveredTrackers = this._discoverFreeboxEntities().trackers;
+		const trackers = discoveredTrackers.length ? discoveredTrackers : integrationEntities.filter((entity) => entity.entity_id.startsWith("device_tracker."));
 
 		for (const entity of trackers) {
 			const state = this._hass.states[entity.entity_id];
@@ -2716,6 +2741,9 @@ class FreeboxCardEditor extends HTMLElement {
 		resolver._config = { ...FreeboxCard.FIELD_DEFAULTS, ...this._config };
 		resolver._deviceRegistry = [];
 		resolver._entityRegistry = [];
+		resolver._discoveryRegistrySource = null;
+		resolver._discoveryDeviceId = "";
+		resolver._discoveryResult = null;
 		const entities = resolver._resolveEntities();
 		const available = (id) => { const state=this._hass.states?.[id]?.state; return Boolean(state && !["unknown","unavailable"].includes(state)); };
 		return {
