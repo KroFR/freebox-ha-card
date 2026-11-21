@@ -532,7 +532,10 @@ class FreeboxCard extends HTMLElement {
 
 	_normalizeCollapsedSections(value) {
 		const source = value && typeof value === "object" ? value : {};
-		const allowed = new Set(["internet", "system", "hardware", "telephony", "devices", "debug"]);
+		const allowed = new Set([
+			"internet", "system", "hardware", "telephony", "devices", "debug",
+			"tracker_connected_open", "tracker_away_open",
+		]);
 		return Object.fromEntries(Object.entries(source).filter(([key, collapsed]) => allowed.has(key) && typeof collapsed === "boolean"));
 	}
 
@@ -1238,6 +1241,11 @@ class FreeboxCard extends HTMLElement {
 	}
 
 	_applyCollapsedSections() {
+		this.shadowRoot.querySelectorAll("details[data-tracker-list]").forEach((element) => {
+			const key = `tracker_${element.dataset.trackerList}_open`;
+			const open = this._collapsedSections[key] === true;
+			if (element.open !== open) element.open = open;
+		});
 		this.shadowRoot.querySelectorAll("section.panel[data-section-key]").forEach((section) => {
 			const key = section.dataset.sectionKey;
 			const collapsed = this._collapsedSections[key] === true;
@@ -1257,7 +1265,8 @@ class FreeboxCard extends HTMLElement {
 		}
 
 		this.shadowRoot.querySelectorAll("details[data-tracker-list]").forEach((element) => {
-			this._trackerListsOpen[element.dataset.trackerList] = element.open;
+			const key = `tracker_${element.dataset.trackerList}_open`;
+			this._collapsedSections = { ...this._collapsedSections, [key]: element.open };
 		});
 
 
@@ -1327,7 +1336,10 @@ class FreeboxCard extends HTMLElement {
 
 		this.shadowRoot.querySelectorAll("details[data-tracker-list]").forEach((element) => {
 			element.addEventListener("toggle", () => {
-				this._trackerListsOpen[element.dataset.trackerList] = element.open;
+				const key = `tracker_${element.dataset.trackerList}_open`;
+				if (this._collapsedSections[key] === element.open) return;
+				this._collapsedSections = { ...this._collapsedSections, [key]: element.open };
+				this._saveCollapsedSections();
 			});
 		});
 		this._initializeSectionNavigation();
@@ -2073,7 +2085,7 @@ class FreeboxCard extends HTMLElement {
 			this._config.show_total_tile !== false ? ["mdi:devices", "total_devices", stats.total, "total"] : null,
 		].filter(Boolean);
 		const renderList = (key, titleKey, names, count, itemClass = "") => names.length
-			? `<details class="connected-devices-list ${itemClass}" data-tracker-list="${key}"${this._trackerListsOpen[key] ? " open" : ""}><summary><span><ha-icon icon="mdi:format-list-bulleted"></ha-icon>${this._t(titleKey)}<em class="connected-count">${count}</em></span></summary><div class="connected-device-names">${names.map((item) => `<div><ha-icon icon="${this._escape(this._safeIcon(item.icon))}"></ha-icon><span class="device-name">${this._escape(item.name)}</span>${Number.isFinite(item.connectionTimestamp) ? `<small class="device-connection-date"><em>${this._t(key === "connected" ? "connected_since" : "last_connection")}</em>${this._escape(this._formatTrackerConnectionTimestamp(item.connectionTimestamp))}</small>` : ""}</div>`).join("")}</div></details>`
+			? `<details class="connected-devices-list ${itemClass}" data-tracker-list="${key}"${this._collapsedSections[`tracker_${key}_open`] === true ? " open" : ""}><summary><span><ha-icon icon="mdi:format-list-bulleted"></ha-icon>${this._t(titleKey)}<em class="connected-count">${count}</em></span></summary><div class="connected-device-names">${names.map((item) => `<div><ha-icon icon="${this._escape(this._safeIcon(item.icon))}"></ha-icon><span class="device-name">${this._escape(item.name)}</span>${Number.isFinite(item.connectionTimestamp) ? `<small class="device-connection-date"><em>${this._t(key === "connected" ? "connected_since" : "last_connection")}</em>${this._escape(this._formatTrackerConnectionTimestamp(item.connectionTimestamp))}</small>` : ""}</div>`).join("")}</div></details>`
 			: "";
 		const connectedList = this._config.show_connected_devices_list !== false
 			? renderList("connected", "connected_devices_list", connectedNames, `${stats.home} / ${stats.home + stats.away}`)
