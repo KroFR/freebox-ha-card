@@ -6,7 +6,7 @@
  * License: MIT
  */
 
-const CARD_VERSION = "2026.11.6-2";
+const CARD_VERSION = "2026.11.7";
 
 /* ---------------------------------------------------------------------- */
 /*  Languages                                                             */
@@ -385,6 +385,8 @@ class FreeboxCard extends HTMLElement {
 		this._bandwidthHistory = { key: "", loadedAt: 0, loading: false, series: {} };
 		this._networkQualityHistory = { key: "", loadedAt: 0, loading: false, series: {} };
 		this._lastRenderSignature = "";
+		this._lastStructureSignature = "";
+		this._rendered = false;
 		this._collapsedSections = {};
 		this._collapsedSectionsStorageKey = "";
 		this._collapsedSectionsLoaded = false;
@@ -431,10 +433,32 @@ class FreeboxCard extends HTMLElement {
 		});
 		const localeChanged = localePreferences !== this._lastLocalePreferences;
 		this._lastLocalePreferences = localePreferences;
-		const signature = this._getRenderSignature(hass);
-		if (!localeChanged && signature === this._lastRenderSignature) return;
-		this._lastRenderSignature = signature;
-		this._render();
+		const structureSignature = this._getStructureSignature(hass);
+		const valueSignature = this._getRenderSignature(hass);
+		if (!this._rendered || localeChanged || structureSignature !== this._lastStructureSignature) {
+			this._lastStructureSignature = structureSignature;
+			this._lastRenderSignature = valueSignature;
+			this._render();
+			this._rendered = true;
+			return;
+		}
+		if (valueSignature === this._lastRenderSignature) return;
+		this._lastRenderSignature = valueSignature;
+		this._updateLiveDom();
+	}
+
+	_getStructureSignature(hass = this._hass) {
+		if (!hass || !this._config) return "";
+		const resolved = this._resolveEntities();
+		const trackers = this._getIntegrationEntities().filter((entity) => entity.entity_id.startsWith("device_tracker.")).map((entity) => [entity.entity_id, entity.disabled_by || null, entity.device_id || null]);
+		return JSON.stringify({
+			deviceId: this._getSelectedDeviceId(),
+			layout: this._config.layout,
+			config: this._config,
+			darkMode: Boolean(hass.themes?.darkMode),
+			entities: { ...resolved, hardwareTemperatures: resolved.hardwareTemperatures, hardwareFans: resolved.hardwareFans, hardwareStorage: resolved.hardwareStorage, hardwareRaid: resolved.hardwareRaid },
+			trackers,
+		});
 	}
 
 	_getRenderSignature(hass = this._hass) {
@@ -520,12 +544,12 @@ class FreeboxCard extends HTMLElement {
 			const response = await this._hass.connection.sendMessagePromise({ type: "frontend/get_user_data", key });
 			this._collapsedSections = this._normalizeCollapsedSections(response?.value ?? response);
 			this._collapsedSectionsLoaded = true;
-			this._render();
+			this._applyCollapsedSections();
 			this._unsubscribeCollapsedSections = await this._hass.connection.subscribeMessage((message) => {
 				const next = this._normalizeCollapsedSections(message?.value ?? message);
 				if (JSON.stringify(next) === JSON.stringify(this._collapsedSections)) return;
 				this._collapsedSections = next;
-				this._render();
+				this._applyCollapsedSections();
 			}, { type: "frontend/subscribe_user_data", key });
 		} catch (error) {
 			console.warn("[freebox-card] Unable to load collapsible section preferences", error);
@@ -604,28 +628,36 @@ class FreeboxCard extends HTMLElement {
 		});
 	}
 
-	_initializeCollapsibleSections() {
-		this.shadowRoot.querySelectorAll("section.panel[data-section-key]").forEach((section) => {
+	_initializeCollapsibleSections(root = this.shadowRoot) {
+		root.querySelectorAll("section.panel[data-section-key]").forEach((section) => {
 			const key = section.dataset.sectionKey;
 			const title = section.querySelector(":scope > .section-title");
 			if (!title || !key) return;
-			const body = document.createElement("div");
-			body.className = "section-collapse-body";
-			while (title.nextSibling) body.appendChild(title.nextSibling);
-			section.appendChild(body);
-			const chevron = document.createElement("ha-icon");
-			chevron.className = "section-collapse-chevron";
-			chevron.setAttribute("icon", "mdi:chevron-down");
-			title.appendChild(chevron);
+			let body = section.querySelector(":scope > .section-collapse-body");
+			if (!body) {
+				body = document.createElement("div");
+				body.className = "section-collapse-body";
+				while (title.nextSibling) body.appendChild(title.nextSibling);
+				section.appendChild(body);
+			}
+			let chevron = title.querySelector(":scope > .section-collapse-chevron");
+			if (!chevron) {
+				chevron = document.createElement("ha-icon");
+				chevron.className = "section-collapse-chevron";
+				title.appendChild(chevron);
+			}
 			const applyState = () => {
 				const collapsed = this._collapsedSections[key] === true;
 				section.classList.toggle("section-collapsed", collapsed);
 				title.setAttribute("aria-expanded", String(!collapsed));
 				title.setAttribute("aria-label", this._t(collapsed ? "expand_section" : "collapse_section"));
+				chevron.setAttribute("icon", `mdi:chevron-${collapsed ? "right" : "up"}`);
 			};
 			applyState();
 			title.setAttribute("role", "button");
 			title.setAttribute("tabindex", "0");
+			if (title.dataset.collapseBound === "true") return;
+			title.dataset.collapseBound = "true";
 			const toggle = () => {
 				this._collapsedSections = { ...this._collapsedSections, [key]: !(this._collapsedSections[key] === true) };
 				applyState();
@@ -768,8 +800,9 @@ class FreeboxCard extends HTMLElement {
 			console.warn("[freebox-card] Unable to load Home Assistant registries", error);
 		} finally {
 			this._registryLoading = false;
-			this._lastRenderSignature = this._getRenderSignature();
+			this._lastStructureSignature = "";
 			this._render();
+			this._rendered = true;
 		}
 	}
 
@@ -1136,6 +1169,62 @@ class FreeboxCard extends HTMLElement {
 		return { stats, connectedNames, awayNames };
 	}
 
+	_replaceText(selector, value) {
+		const element = this.shadowRoot.querySelector(selector);
+		if (element && value != null && element.textContent !== String(value)) element.textContent = String(value);
+	}
+
+	_updateLiveDom() {
+		if (!this.shadowRoot?.querySelector("ha-card")) return this._render();
+		const e = this._resolveEntities();
+		// Frequent bandwidth and latency values: patch text and gauges only.
+		for (const [type, entityId] of [["download", e.download], ["upload", e.upload], ["latency", e.latency]]) {
+			if (!entityId) continue;
+			const current = this.shadowRoot.querySelector(`.internet-metric.${type}`);
+			const markup = type === "latency" ? this._latencyMetric(entityId) : this._speedMetric(entityId, type);
+			if (!current || !markup) continue;
+			const template = document.createElement("template"); template.innerHTML = markup.trim(); const fresh = template.content.firstElementChild;
+			const value = current.querySelector(".metric-copy strong"), nextValue = fresh?.querySelector(".metric-copy strong");
+			const small = current.querySelector(".metric-copy small"), nextSmall = fresh?.querySelector(".metric-copy small");
+			const gauge = current.querySelector(".metric-value"), nextGauge = fresh?.querySelector(".metric-value");
+			if (value && nextValue) value.textContent = nextValue.textContent;
+			if (small && nextSmall) small.textContent = nextSmall.textContent;
+			if (gauge && nextGauge) gauge.setAttribute("style", nextGauge.getAttribute("style") || "");
+		}
+
+		this.shadowRoot.querySelectorAll("[data-more-info]").forEach((element) => {
+			const entityId = element.dataset.moreInfo;
+			if (!entityId || !this._hass.states[entityId]) return;
+			if (element.matches(".compact-metric")) {
+				const strong = element.querySelector("strong");
+				const value = element.classList.contains("download") || element.classList.contains("upload") ? this._formatSpeed(entityId) : this._formatEntity(entityId);
+				if (strong) strong.textContent = value;
+			}
+		});
+	}
+
+	_bindInteractiveElements(root = this.shadowRoot) {
+		root.querySelectorAll("[data-action]").forEach((element) => element.addEventListener("click", (event) => { event.stopPropagation(); this._handleClick(event); }));
+		root.querySelectorAll("[data-more-info]").forEach((element) => element.addEventListener("click", () => {
+			const entityId = element.dataset.moreInfo;
+			if (this._isValidEntityId(entityId)) this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId }, bubbles: true, composed: true }));
+		}));
+	}
+
+	_applyCollapsedSections() {
+		this.shadowRoot.querySelectorAll("section.panel[data-section-key]").forEach((section) => {
+			const key = section.dataset.sectionKey;
+			const collapsed = this._collapsedSections[key] === true;
+			section.classList.toggle("section-collapsed", collapsed);
+			const title = section.querySelector(":scope > .section-title");
+			if (!title) return;
+			title.setAttribute("aria-expanded", String(!collapsed));
+			title.setAttribute("aria-label", this._t(collapsed ? "expand_section" : "collapse_section"));
+			const chevron = title.querySelector(":scope > .section-collapse-chevron");
+			if (chevron) chevron.setAttribute("icon", `mdi:chevron-${collapsed ? "right" : "up"}`);
+		});
+	}
+
 	_render() {
 		if (!this.shadowRoot || !this._config) {
 			return;
@@ -1203,30 +1292,7 @@ class FreeboxCard extends HTMLElement {
 			</ha-card>`;
 
 
-		this.shadowRoot.querySelectorAll("[data-action]").forEach((element) => {
-			element.addEventListener("click", (event) => this._handleClick(event));
-		});
-
-		this.shadowRoot.querySelectorAll("[data-debug-export]").forEach((element) => {
-			element.addEventListener("click", (event) => {
-				event.preventDefault();
-				event.stopPropagation();
-				this._exportDebugGroup(element.dataset.debugExport);
-			});
-		});
-
-		this.shadowRoot.querySelectorAll("[data-more-info]").forEach((element) => {
-			element.addEventListener("click", () => {
-				const entityId = element.dataset.moreInfo;
-				if (!this._isValidEntityId(entityId)) return;
-				this.dispatchEvent(new CustomEvent("hass-more-info", {
-					detail: { entityId },
-					bubbles: true,
-					composed: true,
-				}));
-			});
-		});
-
+		this._bindInteractiveElements();
 		this.shadowRoot.querySelectorAll("details[data-debug-group]").forEach((element) => {
 			element.addEventListener("toggle", () => {
 				this._debugGroupsOpen[element.dataset.debugGroup] = element.open;
@@ -1539,7 +1605,8 @@ class FreeboxCard extends HTMLElement {
 			console.error("[freebox-card][history] Unable to load bandwidth history", { error, entityIds, hours });
 			this._bandwidthHistory = { key, loadedAt: Date.now(), loading: false, series: {} };
 		}
-		this._render();
+		if (this._config.layout === "standard") this._refreshInternetSection();
+		else this._render();
 	}
 
 	async _loadNetworkQualityHistory(latencyEntity, packetLossEntity) {
@@ -1562,7 +1629,29 @@ class FreeboxCard extends HTMLElement {
 			console.error("[freebox-card][network-history] Unable to load history", error);
 			this._networkQualityHistory = { key, loadedAt: Date.now(), loading: false, series: {} };
 		}
-		this._render();
+		if (this._config.layout === "standard") this._refreshInternetSection();
+		else this._render();
+	}
+
+	_refreshInternetSection() {
+		const section = this.shadowRoot.querySelector('section.panel[data-section-key="internet"]');
+		const body = section?.querySelector(":scope > .section-collapse-body");
+		if (!section || !body) return;
+		const e = this._resolveEntities();
+		const template = document.createElement("template");
+		template.innerHTML = this._internetSection(e, this._getInternetInfo()).trim();
+		const fresh = template.content.querySelector("section.panel");
+		if (!fresh) return;
+		for (const selector of [".bandwidth-history", ".network-quality-history"]) {
+			const current = body.querySelector(selector);
+			const next = fresh.querySelector(selector);
+			if (current && next) current.replaceWith(next);
+			else if (!current && next) body.appendChild(next);
+			else if (current && !next) current.remove();
+		}
+		this._initializeBandwidthHistoryTooltip();
+		this._initializeBandwidthHistoryAxis();
+		this._initializeNetworkQualityChart();
 	}
 
 	_groupBandwidthHistory(points, start, end, duration = 300000) {
@@ -2134,8 +2223,8 @@ class FreeboxCard extends HTMLElement {
 
 	_styles() {
 		return `
-			:host { display:block; }
-			ha-card { position:relative; container-type:inline-size; overflow:hidden; padding:20px; color:var(--primary-text-color); background:var(--ha-card-background, var(--card-background-color)); }
+			:host { display:block; overflow-anchor:none; }
+			ha-card { position:relative; overflow-anchor:none; container-type:inline-size; overflow:hidden; padding:20px; color:var(--primary-text-color); background:var(--ha-card-background, var(--card-background-color)); }
 			ha-card.light-theme { background:var(--ha-card-background, var(--card-background-color)); }
 			/* Light theme uses the same visual hierarchy as dark theme. */
 			ha-card.light-theme .panel { background:rgba(128,128,128,.08); }
@@ -2240,13 +2329,12 @@ class FreeboxCard extends HTMLElement {
 			.internet-panel, .detail-panel { padding:15px; }
 			.section-title { display:flex; align-items:center; gap:8px; margin-bottom:13px; color:var(--secondary-text-color); font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
 			.section-title ha-icon { --mdc-icon-size:18px; color:var(--freebox-accent); }
-			.panel > .section-title { cursor:pointer; user-select:none; }
-			.section-collapse-chevron { flex:0 0 auto; margin-left:auto; --mdc-icon-size:20px !important; color:var(--secondary-text-color) !important; transition:transform .18s ease; }
+			.panel > .section-title { cursor:pointer; user-select:none; touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
+			.section-collapse-chevron { flex:0 0 auto; margin-left:auto; --mdc-icon-size:20px !important; color:var(--secondary-text-color) !important; }
 			.system-title .section-collapse-chevron { margin-left:6px; }
 			.section-collapse-body { display:block; }
 			.section-collapsed > .section-title { margin-bottom:0; }
 			.section-collapsed > .section-collapse-body { display:none; }
-			.section-collapsed > .section-title .section-collapse-chevron { transform:rotate(-90deg); }
 			.system-actions { position:relative; z-index:2; }
 			.subsection-title { margin-bottom:8px; color:var(--secondary-text-color); font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
 			.internet-metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
