@@ -6,7 +6,7 @@
  * License: MIT
  */
 
-const CARD_VERSION = "2026.11.7";
+const CARD_VERSION = "2026.11.6-2";
 
 /* ---------------------------------------------------------------------- */
 /*  Languages                                                             */
@@ -42,6 +42,8 @@ const TRANSLATIONS = {
 			disabled_devices: "Disabled",
 			connected_devices_list: "Connected devices",
 			away_devices_list: "Disconnected devices",
+			connected_since: "Connected since",
+			last_connection: "Last connection",
 			download: "Download",
 			live_bandwidth: "Real-time bandwidth",
 			bandwidth_history: "Bandwidth history",
@@ -177,6 +179,8 @@ const TRANSLATIONS = {
 			disabled_devices: "Désactivés",
 			connected_devices_list: "Appareils connectés",
 			away_devices_list: "Appareils déconnectés",
+			connected_since: "Connecté depuis",
+			last_connection: "Dernière connexion",
 			download: "Téléchargement",
 			live_bandwidth: "Bande passante en temps réel",
 			bandwidth_history: "Historique de la bande passante",
@@ -1126,6 +1130,28 @@ class FreeboxCard extends HTMLElement {
 			this._hass.callService("button", "press", { entity_id: entityId });
 	}
 
+	_parseTrackerTimestamp(value) {
+		if (value === undefined || value === null || value === "") return null;
+		const numeric = Number(value);
+		const timestamp = Number.isFinite(numeric)
+			? (numeric < 100000000000 ? numeric * 1000 : numeric)
+			: Date.parse(value);
+		return Number.isFinite(timestamp) ? timestamp : null;
+	}
+
+	_trackerConnectionTimestamp(state, connected) {
+		if (!state) return null;
+		// While home, last_changed remains fixed until the device leaves home.
+		if (connected) return this._parseTrackerTimestamp(state.last_changed);
+		// While away, Freebox last_time_reachable is the actual last reachable time.
+		return this._parseTrackerTimestamp(state.attributes?.last_time_reachable);
+	}
+
+	_formatTrackerConnectionTimestamp(timestamp) {
+		if (!Number.isFinite(timestamp)) return "";
+		return this._formatGraphDateTime(new Date(timestamp));
+	}
+
 	_getTrackerData(integrationEntities, integrationDeviceIds) {
 		const stats = { total: 0, home: 0, away: 0, disabled: 0 };
 		const connectedNames = [];
@@ -1146,10 +1172,10 @@ class FreeboxCard extends HTMLElement {
 				stats.disabled += 1;
 			} else if (state?.state === "home") {
 				stats.home += 1;
-				connectedNames.push({ name, icon: this._safeIcon(state?.attributes?.icon) });
+				connectedNames.push({ name, icon: this._safeIcon(state?.attributes?.icon), connectionTimestamp: this._trackerConnectionTimestamp(state, true) });
 			} else {
 				stats.away += 1;
-				awayNames.push({ name, icon: this._safeIcon(state?.attributes?.icon) });
+				awayNames.push({ name, icon: this._safeIcon(state?.attributes?.icon), connectionTimestamp: this._trackerConnectionTimestamp(state, false) });
 			}
 		}
 
@@ -2047,7 +2073,7 @@ class FreeboxCard extends HTMLElement {
 			this._config.show_total_tile !== false ? ["mdi:devices", "total_devices", stats.total, "total"] : null,
 		].filter(Boolean);
 		const renderList = (key, titleKey, names, count, itemClass = "") => names.length
-			? `<details class="connected-devices-list ${itemClass}" data-tracker-list="${key}"${this._trackerListsOpen[key] ? " open" : ""}><summary><span><ha-icon icon="mdi:format-list-bulleted"></ha-icon>${this._t(titleKey)}<em class="connected-count">${count}</em></span></summary><div class="connected-device-names">${names.map((item) => `<div><ha-icon icon="${this._escape(this._safeIcon(item.icon))}"></ha-icon><span>${this._escape(item.name)}</span></div>`).join("")}</div></details>`
+			? `<details class="connected-devices-list ${itemClass}" data-tracker-list="${key}"${this._trackerListsOpen[key] ? " open" : ""}><summary><span><ha-icon icon="mdi:format-list-bulleted"></ha-icon>${this._t(titleKey)}<em class="connected-count">${count}</em></span></summary><div class="connected-device-names">${names.map((item) => `<div><ha-icon icon="${this._escape(this._safeIcon(item.icon))}"></ha-icon><span class="device-name">${this._escape(item.name)}</span>${Number.isFinite(item.connectionTimestamp) ? `<small class="device-connection-date"><em>${this._t(key === "connected" ? "connected_since" : "last_connection")}</em>${this._escape(this._formatTrackerConnectionTimestamp(item.connectionTimestamp))}</small>` : ""}</div>`).join("")}</div></details>`
 			: "";
 		const connectedList = this._config.show_connected_devices_list !== false
 			? renderList("connected", "connected_devices_list", connectedNames, `${stats.home} / ${stats.home + stats.away}`)
@@ -2514,10 +2540,13 @@ class FreeboxCard extends HTMLElement {
 			.connected-devices-list summary::after { content:""; width:7px; height:7px; border-right:2px solid var(--secondary-text-color); border-bottom:2px solid var(--secondary-text-color); transform:rotate(45deg); }
 			.connected-devices-list[open] summary::after { transform:rotate(225deg); }
 			.connected-device-names { display:grid; gap:0; padding:4px 12px 8px; border-top:1px solid var(--divider-color); }
-			.connected-device-names > div { display:flex; align-items:center; gap:6px; min-width:0; padding:6px 0; }
+			.connected-device-names > div { display:grid; grid-template-columns:14px minmax(0,1fr) auto; align-items:center; gap:6px; min-width:0; padding:6px 0; }
 			.connected-device-names ha-icon { --mdc-icon-size:14px; flex:0 0 14px; color:#43a047; }
 			.away-devices-list .connected-device-names ha-icon { color:#f59e0b; }
-			.connected-device-names span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; }
+			.connected-device-names .device-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; }
+			.device-connection-date { display:flex; align-items:center; gap:4px; color:var(--secondary-text-color); font-size:10px; font-weight:400; white-space:nowrap; }
+			.device-connection-date em { font-style:normal; opacity:.8; }
+			@media (max-width:420px) { .connected-device-names > div { grid-template-columns:14px minmax(0,1fr); } .device-connection-date { grid-column:2; margin-top:-2px; } }
 			@media (max-width:520px) { .tracker-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 			.debug-panel { padding:15px; }
 			.debug-list { display:grid; gap:10px; }
