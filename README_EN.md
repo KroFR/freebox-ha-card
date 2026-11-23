@@ -26,7 +26,7 @@ A responsive Lovelace card for [Home Assistant](https://www.home-assistant.io/) 
 
 | Light Theme | Dark Theme |
 |---|---|
-| <img width="501" height="449" alt="image" src="https://github.com/user-attachments/assets/59d78f25-9feb-4089-a7cf-4cb7002a0499" /> | <img width="503" height="450" alt="image" src="https://github.com/user-attachments/assets/1bfb5f3c-b471-4e69-9459-e1d5c88674be" /> |
+| <img width="503" height="443" alt="image" src="https://github.com/user-attachments/assets/25b31074-7110-4204-90a7-734b68da3e79" /> | <img width="506" height="445" alt="image" src="https://github.com/user-attachments/assets/d783b4a2-cb6c-429d-892f-b5f258c226c9" /> |
 
 ### Telephony
 
@@ -45,7 +45,7 @@ A responsive Lovelace card for [Home Assistant](https://www.home-assistant.io/) 
 - Automatic Freebox and latency sensor detection via the Ping integration
 - Download, upload, latency, and bandwidth history monitoring
 - System information: WAN, model, hardware, firmware, network, and uptime
-- Hardware monitoring: storage, RAID, fans, and temperatures
+- Hardware monitoring: storage, RAID, fans, and temperatures, with history mini-graphs for fans and temperatures
 - Wi-Fi control, confirmed Freebox reboot, and direct Freebox OS access with an optional IP address
 - Telephony with missed call monitoring and reset
 - Connected, disconnected, and disabled device tracking with detailed lists
@@ -176,7 +176,8 @@ The **System** section provides a button that opens the Freebox OS administratio
 | `show_bandwidth_history` | boolean | no | `true` | Show the bandwidth history chart |
 | `show_network_quality_history` | boolean | no | `true` | Show latency and packet loss history; controls the Latency tile in Compact mode |
 | `show_history_maximums` | boolean | no | `true` | Show maximum values on the chart |
-| `history_hours` | number | no | `24` | Number of hours displayed in history charts and sparklines, from 1 to 168 |
+| `history_hours` | number | no | `24` | Number of hours displayed in network history charts and sparklines, from 1 to 168 |
+| `hardware_history_hours` | number | no | `24` | Number of hours displayed in temperature and fan mini-graphs, from 1 to 168 |
 | `section_order` | list | no | see below | Display order for card sections |
 | `show_internet` | boolean | no | `true` | Show bandwidth information |
 | `show_system` | boolean | no | `true` | Show system information; controls Internet status and uptime in Compact mode |
