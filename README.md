@@ -26,7 +26,7 @@ Une carte Lovelace responsive pour [Home Assistant](https://www.home-assistant.i
 
 | Thème clair | Thème sombre |
 |---|---|
-| <img width="500" height="449" alt="image" src="https://github.com/user-attachments/assets/3551db42-e3f7-4799-89d3-e7ee231cdeec" /> | <img width="504" height="451" alt="image" src="https://github.com/user-attachments/assets/6d8cc7e9-3629-4d22-8c9b-380bb4ca2c74" /> |
+| <img width="502" height="443" alt="image" src="https://github.com/user-attachments/assets/b7304ad0-afe9-45ea-b9f1-2d7a811cf7ce" /> | <img width="505" height="446" alt="image" src="https://github.com/user-attachments/assets/5ad2bc35-ea67-4a90-8485-4cce2413dd1c" /> |
 
 ### Téléphonie
 
@@ -45,7 +45,7 @@ Une carte Lovelace responsive pour [Home Assistant](https://www.home-assistant.i
 - Détection automatique de la Freebox et du capteur de latence via l’intégration Ping
 - Suivi des débits descendant et montant, de la latence et de leur historique
 - Informations système : WAN, modèle, hardware, firmware, réseau et disponibilité
-- Surveillance du matériel : stockage, RAID, ventilateurs et températures
+- Surveillance du matériel : stockage, RAID, ventilateurs et températures, avec mini-graphes d’historique pour les ventilateurs et les températures
 - Contrôle du Wi-Fi, redémarrage avec confirmation et accès direct à Freebox OS, avec adresse IP optionnelle
 - Téléphonie avec suivi et réinitialisation des appels manqués
 - Suivi des appareils connectés, déconnectés et désactivés avec listes détaillées
@@ -176,7 +176,8 @@ La section **Système** propose un bouton ouvrant l’interface d’administrati
 | `show_bandwidth_history` | booléen | non | `true` | Afficher le graphique d’historique de la bande passante |
 | `show_network_quality_history` | booléen | non | `true` | Afficher l’historique de la latence et de la perte de paquets ; contrôle la tuile Latence en mode Compact |
 | `show_history_maximums` | booléen | non | `true` | Afficher les valeurs maximales sur le graphique |
-| `history_hours` | nombre | non | `24` | Nombre d’heures affichées dans les graphiques et mini-graphiques, de 1 à 168 |
+| `history_hours` | nombre | non | `24` | Nombre d’heures affichées dans les graphiques et mini-graphiques réseau, de 1 à 168 |
+| `hardware_history_hours` | nombre | non | `24` | Nombre d’heures affichées dans les mini-graphes des températures et ventilateurs, de 1 à 168 |
 | `section_order` | liste | non | voir ci-dessous | Ordre d’affichage des sections |
 | `show_internet` | booléen | non | `true` | Afficher les informations de bande passante |
 | `show_system` | booléen | non | `true` | Afficher les informations système ; contrôle l’état Internet et la disponibilité en mode Compact |
