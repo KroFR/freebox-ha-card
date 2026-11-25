@@ -43,7 +43,7 @@ A responsive Lovelace card for [Home Assistant](https://www.home-assistant.io/) 
 ## ✨ Features
 
 - Automatic Freebox and latency sensor detection via the Ping integration
-- Download, upload, latency, and bandwidth history monitoring
+- Download, upload, latency, packet loss, and synchronized history monitoring with optional zoom and navigation controls
 - System information: WAN, model, hardware, firmware, network, and uptime
 - Hardware monitoring: storage, RAID, fans, and temperatures, with history mini-graphs for fans and temperatures
 - Wi-Fi control, confirmed Freebox reboot, and direct Freebox OS access with an optional IP address
@@ -135,22 +135,44 @@ See the [official Freebox integration documentation](https://www.home-assistant.
 
 ## 📈 History charts
 
-The **Bandwidth** section includes two charts: download and upload history, plus latency and packet loss history.
+The **Bandwidth** section includes synchronized Download/Upload and Latency/Packet Loss history charts. Bandwidth values are normalized regardless of the source unit. Live metrics use Mbit/s or Gbit/s, while history charts use Mbit/s.
 
 Bandwidth values are automatically normalized regardless of the unit configured in Home Assistant. Real-time metrics are displayed in Mbit/s or Gbit/s, while history charts use Mbit/s.
 
 The charts:
 
-- Use Home Assistant history data from the available download, upload, latency, and packet loss sensors
-- Display the last 24 hours by default
-- Support a configurable period from 1 to 168 hours
-- Group data into 5-minute periods and display the average for each period
-- Use responsive axes and adaptive scaling for desktop and mobile readability
-- Show Download and Upload, or Latency and Packet Loss values on hover
-- Support optional maximum value indicators directly on the charts
-- Can be disabled independently from the **Bandwidth** section
+- Use Home Assistant history data from available Download, Upload, Latency, and Packet Loss sensors
+- Display 24 hours by default, configurable from 1 to 168 hours
+- Adapt aggregation to the visible period: 1 minute up to 1 hour, 2 minutes up to 6 hours, 5 minutes up to 24 hours, 10 minutes up to 48 hours, 30 minutes up to 96 hours, then 1 hour
+- Keep tooltips aligned with real measurements and ignore values outside the current aggregation tolerance
+- Use responsive axes and adaptive scales on desktop and mobile
+- Show optional maximum-value markers
+- Can be hidden independently from the **Bandwidth** section
 
 The history settings are available under **Card layout > Bandwidth** in the visual editor.
+
+### Zoom and navigation
+
+Set `enable_history_zoom: true` to enable synchronized zoom and navigation for both history charts. The feature is disabled by default to preserve the classic chart behavior.
+
+When enabled:
+
+| Feature | Desktop | Mobile |
+|---|---|---|
+| Zoom in / out | `+` / `−` buttons | `+` / `−` buttons |
+| Select zoom area | Click directly on the chart | — |
+| Zoom around the pointer | `Ctrl` / `Cmd` + mouse wheel | — |
+| Navigate through history | Click and drag, or `←` / `→` buttons | `←` / `→` buttons |
+| Navigation step | 25% of the visible period | 25% of the visible period |
+| Inspect values | Mouse hover | One-finger movement |
+| Reset zoom | Double-click or Reset button | Reset button |
+| Minimum zoom window | 30 minutes | 30 minutes |
+
+The Bandwidth and Latency & Packet Loss charts remain synchronized: zooming or navigating the visible period updates both charts.
+
+Zoom and navigation reuse the history already loaded by Home Assistant and do not trigger additional History API requests.
+
+History options are available under **Card layout > Bandwidth > History** in the visual editor.
 
 ## 🌐 Freebox OS access
 
@@ -170,12 +192,14 @@ The **System** section provides a button that opens the Freebox OS administratio
 | `language` | string | no | `auto` | `auto`, `en`, or `fr` |
 | `layout` | string | no | `standard` | Display mode: `standard`, `single`, or `compact` |
 | `latency_entity` | string | no | auto-detected | Latency sensor. If not configured, the card automatically selects the first Ping integration sensor containing `average` or `moyen` in its name |
+| `packet_loss_entity` | string | no | auto-detected | Packet Loss sensor used by the Network Quality history chart |
 | `download_bandwidth` | number | no | — | Maximum download bandwidth in Mbit/s, used to calculate the gauge percentage |
 | `upload_bandwidth` | number | no | — | Maximum upload bandwidth in Mbit/s, used to calculate the gauge percentage |
 | `show_live_metrics` | boolean | no | `true` | Show real-time bandwidth metrics; controls Download and Upload in Compact mode |
 | `show_bandwidth_history` | boolean | no | `true` | Show the bandwidth history chart |
 | `show_network_quality_history` | boolean | no | `true` | Show latency and packet loss history; controls the Latency tile in Compact mode |
 | `show_history_maximums` | boolean | no | `true` | Show maximum values on the chart |
+| `enable_history_zoom` | boolean | no | `false` | Enable synchronized zoom and navigation controls for Bandwidth and Network Quality history charts |
 | `history_hours` | number | no | `24` | Number of hours displayed in network history charts and sparklines, from 1 to 168 |
 | `hardware_history_hours` | number | no | `24` | Number of hours displayed in temperature and fan mini-graphs, from 1 to 168 |
 | `section_order` | list | no | see below | Display order for card sections |
