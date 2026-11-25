@@ -1463,6 +1463,20 @@ class FreeboxCard extends HTMLElement {
 		}
 	}
 
+	_nearestHistoryPoint(series, timestamp, tolerance = 5 * 60 * 1000) {
+		if (!Array.isArray(series) || !series.length || !Number.isFinite(timestamp)) return null;
+		const point = series.reduce((best, current) =>
+			Math.abs(current.timestamp - timestamp) < Math.abs(best.timestamp - timestamp) ? current : best,
+			series[0]);
+		return Math.abs(point.timestamp - timestamp) <= tolerance ? point : null;
+	}
+
+	_historyHoverX(point, start, end, rect, chart) {
+		if (!point) return null;
+		const ratio = (point.timestamp - start) / Math.max(end - start, 1);
+		return rect.left - chart.getBoundingClientRect().left + ratio * rect.width;
+	}
+
 	_initializeBandwidthHistoryTooltip() {
 		const chart = this.shadowRoot?.querySelector(".history-chart[data-history-start]");
 		const overlay = chart?.querySelector(".history-hover-overlay");
@@ -1476,8 +1490,7 @@ class FreeboxCard extends HTMLElement {
 		const maximum = Number(chart.dataset.historyMaximum);
 		const download = this._historyHoverData?.download || [];
 		const upload = this._historyHoverData?.upload || [];
-		const nearest = (series, timestamp) => series.length ? series.reduce((best, point) =>
-			Math.abs(point.timestamp - timestamp) < Math.abs(best.timestamp - timestamp) ? point : best, series[0]) : null;
+
 		const number = new Intl.NumberFormat(this._getLanguage(), { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 		const formatPopupDateTime = (timestamp) => this._formatGraphDateTime(new Date(timestamp));
 		const hide = () => { tooltip.hidden = true; cursor.hidden = true; if (downloadDot) downloadDot.hidden = true; if (uploadDot) uploadDot.hidden = true; };
@@ -1486,14 +1499,14 @@ class FreeboxCard extends HTMLElement {
 			if (!rect.width || !Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(maximum)) return;
 			const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
 			const timestamp = start + ratio * (end - start);
-			const d = nearest(download, timestamp);
-			const u = nearest(upload, timestamp);
+			const d = this._nearestHistoryPoint(download, timestamp);
+			const u = this._nearestHistoryPoint(upload, timestamp);
 			const reference = [d, u].filter(Boolean).sort((a, b) => Math.abs(a.timestamp - timestamp) - Math.abs(b.timestamp - timestamp))[0];
 			if (!reference) return hide();
 			const xRatio = (reference.timestamp - start) / Math.max(end - start, 1);
 			const x = rect.left - chart.getBoundingClientRect().left + xRatio * rect.width;
 			cursor.style.left = `${x}px`; cursor.hidden = false;
-			const placeDot = (dot, point) => { if (!dot || !point) return; dot.hidden = false; dot.style.left = `${x}px`; dot.style.top = `${Math.min(1, Math.max(0, 1 - point.value / maximum)) * 135}px`; };
+			const placeDot = (dot, point) => { if (!dot) return; if (!point) { dot.hidden = true; return; } const pointX = this._historyHoverX(point, start, end, rect, chart); if (!Number.isFinite(pointX)) { dot.hidden = true; return; } dot.hidden = false; dot.style.left = `${pointX}px`; dot.style.top = `${Math.min(1, Math.max(0, 1 - point.value / maximum)) * 135}px`; };
 			placeDot(downloadDot, d); placeDot(uploadDot, u);
 			tooltip.innerHTML = `<strong>${this._escape(formatPopupDateTime(reference.timestamp))}</strong>${d ? `<span><i class="download"></i>${this._t("download")}: <b>${number.format(d.value)} Mbit/s</b></span>` : ""}${u ? `<span><i class="upload"></i>${this._t("upload")}: <b>${number.format(u.value)} Mbit/s</b></span>` : ""}`;
 			tooltip.hidden = false;
@@ -1527,12 +1540,7 @@ class FreeboxCard extends HTMLElement {
 		if (typeof ResizeObserver !== "undefined") { this._networkAxisObserver?.disconnect(); this._networkAxisObserver = new ResizeObserver(renderAxis); this._networkAxisObserver.observe(axis); }
 		if (!overlay || !tooltip || !cursor) return;
 		const latencySeries=this._networkQualityHoverData?.latency||[], lossSeries=this._networkQualityHoverData?.packetLoss||[];
-		const hoverTolerance = 5 * 60 * 1000;
-		const nearest=(series,timestamp)=>{
-			if(!series.length)return null;
-			const point=series.reduce((best,p)=>Math.abs(p.timestamp-timestamp)<Math.abs(best.timestamp-timestamp)?p:best,series[0]);
-			return Math.abs(point.timestamp-timestamp)<=hoverTolerance?point:null;
-		};
+
 		const number=new Intl.NumberFormat(this._getLanguage(),{minimumFractionDigits:1,maximumFractionDigits:1});
 		const formatPopupDateTime=(timestamp)=>this._formatGraphDateTime(new Date(timestamp));
 		const hide=()=>{ tooltip.hidden=true; cursor.hidden=true; if(latencyDot)latencyDot.hidden=true; if(lossDot)lossDot.hidden=true; };
@@ -1541,13 +1549,13 @@ class FreeboxCard extends HTMLElement {
 			if(!rect.width)return;
 			const ratio=Math.min(1,Math.max(0,(event.clientX-rect.left)/rect.width));
 			const timestamp=start+ratio*(end-start);
-			const latency=nearest(latencySeries,timestamp), loss=nearest(lossSeries,timestamp);
+			const latency=this._nearestHistoryPoint(latencySeries,timestamp), loss=this._nearestHistoryPoint(lossSeries,timestamp);
 			const reference=[latency,loss].filter(Boolean).sort((a,b)=>Math.abs(a.timestamp-timestamp)-Math.abs(b.timestamp-timestamp))[0];
 			if(!reference)return hide();
 			const xRatio=(reference.timestamp-start)/Math.max(end-start,1);
 			const x=rect.left-chart.getBoundingClientRect().left+xRatio*rect.width;
 			cursor.style.left=`${x}px`; cursor.hidden=false;
-			const placeDot=(dot,point,maximum)=>{ if(!dot||!point||!maximum)return; dot.hidden=false; dot.style.left=`${x}px`; dot.style.top=`${Math.min(1,Math.max(0,1-point.value/maximum))*135}px`; };
+			const placeDot=(dot,point,maximum)=>{ if(!dot)return; if(!point||!maximum){ dot.hidden=true; return; } const pointX=this._historyHoverX(point,start,end,rect,chart); if(!Number.isFinite(pointX)){ dot.hidden=true; return; } dot.hidden=false; dot.style.left=`${pointX}px`; dot.style.top=`${Math.min(1,Math.max(0,1-point.value/maximum))*135}px`; };
 			placeDot(latencyDot,latency,latencyMaximum); placeDot(lossDot,loss,lossMaximum);
 			tooltip.innerHTML=`<strong>${this._escape(formatPopupDateTime(reference.timestamp))}</strong>${latency?`<span><i class="latency"></i>${this._t("latency")}: <b>${number.format(latency.value)} ms</b></span>`:""}${loss?`<span><i class="loss"></i>${this._t("packet_loss")}: <b>${number.format(loss.value)} %</b></span>`:""}`;
 			tooltip.hidden=false;
