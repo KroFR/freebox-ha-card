@@ -1527,7 +1527,12 @@ class FreeboxCard extends HTMLElement {
 		if (typeof ResizeObserver !== "undefined") { this._networkAxisObserver?.disconnect(); this._networkAxisObserver = new ResizeObserver(renderAxis); this._networkAxisObserver.observe(axis); }
 		if (!overlay || !tooltip || !cursor) return;
 		const latencySeries=this._networkQualityHoverData?.latency||[], lossSeries=this._networkQualityHoverData?.packetLoss||[];
-		const nearest=(series,timestamp)=>series.length?series.reduce((best,p)=>Math.abs(p.timestamp-timestamp)<Math.abs(best.timestamp-timestamp)?p:best,series[0]):null;
+		const hoverTolerance = 5 * 60 * 1000;
+		const nearest=(series,timestamp)=>{
+			if(!series.length)return null;
+			const point=series.reduce((best,p)=>Math.abs(p.timestamp-timestamp)<Math.abs(best.timestamp-timestamp)?p:best,series[0]);
+			return Math.abs(point.timestamp-timestamp)<=hoverTolerance?point:null;
+		};
 		const number=new Intl.NumberFormat(this._getLanguage(),{minimumFractionDigits:1,maximumFractionDigits:1});
 		const formatPopupDateTime=(timestamp)=>this._formatGraphDateTime(new Date(timestamp));
 		const hide=()=>{ tooltip.hidden=true; cursor.hidden=true; if(latencyDot)latencyDot.hidden=true; if(lossDot)lossDot.hidden=true; };
