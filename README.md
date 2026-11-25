@@ -43,7 +43,7 @@ Une carte Lovelace responsive pour [Home Assistant](https://www.home-assistant.i
 ## ✨ Fonctionnalités
 
 - Détection automatique de la Freebox et du capteur de latence via l’intégration Ping
-- Suivi des débits descendant et montant, de la latence et de leur historique
+- Suivi des débits descendant et montant, de la latence, de la perte de paquets et de leurs historiques synchronisés, avec zoom et navigation optionnels
 - Informations système : WAN, modèle, hardware, firmware, réseau et disponibilité
 - Surveillance du matériel : stockage, RAID, ventilateurs et températures, avec mini-graphes d’historique pour les ventilateurs et les températures
 - Contrôle du Wi-Fi, redémarrage avec confirmation et accès direct à Freebox OS, avec adresse IP optionnelle
@@ -141,16 +141,36 @@ Les valeurs de bande passante sont automatiquement normalisées quelle que soit 
 
 Les graphiques :
 
-- Utilisent les données historiques Home Assistant des capteurs de débit descendant, montant, latence et perte de paquets disponibles
-- Affichent les 24 dernières heures par défaut
-- Permettent de configurer une période de 1 à 168 heures
-- Regroupent les données par périodes de 5 minutes et affichent la moyenne de chaque période
-- Utilisent des axes responsives et une échelle adaptative pour rester lisible sur ordinateur et mobile
+- Utilisent l’historique Home Assistant des capteurs Download, Upload, Latence et Perte de paquets disponibles
+- Affichent 24 heures par défaut, avec une période configurable de 1 à 168 heures
+- Adaptent l’agrégation à la période visible : 1 minute jusqu’à 1 heure, 2 minutes jusqu’à 6 heures, 5 minutes jusqu’à 24 heures, 10 minutes jusqu’à 48 heures, 30 minutes jusqu’à 96 heures, puis 1 heure
 - Affichent les valeurs Download et Upload, ou Latence et Perte de paquets, au survol
-- Peuvent afficher ou masquer les valeurs maximales directement sur les graphiques
+- Utilisent des axes responsives et des échelles adaptatives sur ordinateur et mobile
+- Affichent facultativement les valeurs maximales
 - Peuvent être masqués indépendamment de la section **Bande passante**
 
-Les paramètres de l’historique sont disponibles dans **Disposition de la carte > Bande passante** dans le configurateur visuel.
+### Zoom et navigation
+
+Configurez `enable_history_zoom: true` pour activer le zoom et la navigation synchronisés sur les deux graphiques. La fonction est désactivée par défaut afin de conserver le comportement classique.
+
+Lorsque la fonction est activée :
+
+| Fonction | Ordinateur | Mobile |
+|---|---|---|
+| Zoom avant / arrière | Boutons `+` / `−` | Boutons `+` / `−` |
+| Choisir la zone du zoom | Clic directement sur le graphique | — |
+| Zoom autour du pointeur | `Ctrl` / `Cmd` + molette | — |
+| Naviguer dans l’historique | Clic maintenu + déplacement, ou boutons `←` / `→` | Boutons `←` / `→` |
+| Pas de navigation | 25% de la période visible | 25% de la période visible |
+| Consulter les valeurs | Survol avec la souris | Déplacement à un doigt |
+| Réinitialiser le zoom | Double-clic ou bouton Reset | Bouton Reset |
+| Fenêtre minimale | 30 minutes | 30 minutes |
+
+Les graphiques Bande passante et Latence & perte de paquets restent synchronisés : le zoom ou le déplacement de la période met à jour les deux graphiques.
+
+Le zoom et la navigation réutilisent l’historique déjà chargé par Home Assistant et ne déclenchent aucun appel supplémentaire à l’API History.
+
+Les options sont disponibles dans **Disposition de la carte > Bande passante > Historique** dans le configurateur visuel.
 
 ## 🌐 Accès à Freebox OS
 
@@ -170,12 +190,14 @@ La section **Système** propose un bouton ouvrant l’interface d’administrati
 | `language` | chaîne | non | `auto` | `auto`, `en` ou `fr` |
 | `layout` | chaîne | non | `standard` | Mode d’affichage : `standard`, `single` ou `compact` |
 | `latency_entity` | chaîne | non | détection automatique | Capteur de latence. Si absent, la carte recherche le premier capteur Ping contenant `average` ou `moyen` |
+| `packet_loss_entity` | chaîne | non | détection automatique | Capteur de perte de paquets utilisé par le graphique Qualité réseau |
 | `download_bandwidth` | nombre | non | — | Débit descendant maximal en Mbit/s, utilisé pour calculer le pourcentage de la jauge |
 | `upload_bandwidth` | nombre | non | — | Débit montant maximal en Mbit/s, utilisé pour calculer le pourcentage de la jauge |
 | `show_live_metrics` | booléen | non | `true` | Afficher les mesures de bande passante en temps réel ; contrôle Download et Upload en mode Compact |
 | `show_bandwidth_history` | booléen | non | `true` | Afficher le graphique d’historique de la bande passante |
 | `show_network_quality_history` | booléen | non | `true` | Afficher l’historique de la latence et de la perte de paquets ; contrôle la tuile Latence en mode Compact |
 | `show_history_maximums` | booléen | non | `true` | Afficher les valeurs maximales sur le graphique |
+| `enable_history_zoom` | booléen | non | `false` | Activer le zoom et la navigation synchronisés pour les historiques Bande passante et Qualité réseau |
 | `history_hours` | nombre | non | `24` | Nombre d’heures affichées dans les graphiques et mini-graphiques réseau, de 1 à 168 |
 | `hardware_history_hours` | nombre | non | `24` | Nombre d’heures affichées dans les mini-graphes des températures et ventilateurs, de 1 à 168 |
 | `section_order` | liste | non | voir ci-dessous | Ordre d’affichage des sections |
