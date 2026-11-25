@@ -1626,6 +1626,7 @@ class FreeboxCard extends HTMLElement {
 		const animationDelay = -((performance.now ? performance.now() : Date.now()) % animationDuration);
 		const maximum = type === "download" ? 10000 : type === "upload" ? 900 : 100;
 		const percent = forcedPercent ?? Math.min((Number.isFinite(raw) ? Math.max(0, raw) : 0) / maximum * 100, 100);
+		const iconColor = type === "latency" ? "#8B5CF6" : color;
 		const radius = 16;
 		const circumference = 2 * Math.PI * radius;
 		const offset = circumference * (1 - percent / 100);
@@ -1634,7 +1635,7 @@ class FreeboxCard extends HTMLElement {
 				<circle cx="20" cy="20" r="${radius}" class="metric-track"></circle>
 				<circle cx="20" cy="20" r="${radius}" class="metric-value" style="stroke:${color};stroke-dasharray:${circumference};stroke-dashoffset:${offset}"></circle>
 			</svg>
-			<span class="metric-icon"><ha-icon icon="${icon}" style="color:${color};--metric-animation-delay:${animationDelay}ms"></ha-icon></span>
+			<span class="metric-icon"><ha-icon icon="${icon}" style="color:${iconColor};--metric-animation-delay:${animationDelay}ms"></ha-icon></span>
 			<div class="metric-copy ${subtitle ? "" : "single-value"}"><strong>${this._escape(value)}</strong>${subtitle ? `<small>${this._escape(subtitle)}</small>` : ""}</div>
 		</button>`;
 	}
