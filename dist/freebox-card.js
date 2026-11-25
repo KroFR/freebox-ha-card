@@ -1854,6 +1854,7 @@ class FreeboxCard extends HTMLElement {
 		}
 		return this._sharedHistoryWindow;
 	}
+
 	_bandwidthHistoryChart(downloadEntity, uploadEntity) {
 		if (!this._config.show_bandwidth_history) return "";
 		const { hours, start, end } = this._getSharedHistoryWindow();
@@ -1981,6 +1982,7 @@ class FreeboxCard extends HTMLElement {
 		const area = `${path} L${last.x.toFixed(1)},${height} L${first.x.toFixed(1)},${height} Z`;
 		return `<svg class="hardware-sparkline" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true"><path class="hardware-sparkline-area" d="${area}" style="fill:${color}"></path><path class="hardware-sparkline-line" d="${path}" style="stroke:${color}"></path></svg>`;
 	}
+
 	async _loadHardwareHistory(entityTypes) {
 		if (!this._hass?.callApi) return;
 		const entries = Object.entries(entityTypes).filter(([id]) => this._isValidEntityId(id));
@@ -2040,6 +2042,7 @@ class FreeboxCard extends HTMLElement {
 		const attributes = entityId ? ` role="button" tabindex="0" data-more-info="${this._escape(entityId)}"` : "";
 		return `<div class="compact-status-item"${attributes}><div class="compact-status-content"><ha-icon icon="${icon}"></ha-icon><span>${this._escape(label)}</span><strong>${this._escape(value)}</strong></div></div>`;
 	}
+
 	_compactLayout(e, info, trackerStats) {
 		if (this._hass && this._config.show_live_metrics !== false && (e.download || e.upload))
 			setTimeout(() => this._loadBandwidthHistory(e.download, e.upload), 0);
@@ -2179,9 +2182,9 @@ class FreeboxCard extends HTMLElement {
 		</section>`;
 	}
 
-		_hardwareGroup(title, icon, tiles, gridClass = "") {
-			return `<div class="hardware-group"><div class="hardware-group-title"><ha-icon icon="${icon}"></ha-icon>${title}</div><div class="hardware-grid ${gridClass}">${tiles}</div></div>`;
-		}
+	_hardwareGroup(title, icon, tiles, gridClass = "") {
+		return `<div class="hardware-group"><div class="hardware-group-title"><ha-icon icon="${icon}"></ha-icon>${title}</div><div class="hardware-grid ${gridClass}">${tiles}</div></div>`;
+	}
 
 	_hardwareTile(entityId, type) {
 		const state = this._hass.states[entityId];
@@ -2393,6 +2396,7 @@ class FreeboxCard extends HTMLElement {
 				${attributes ? `<div class="debug-attributes">${attributes}</div>` : ""}
 			</div>`;
 		};
+
 		const renderGroup = (key, title, icon, groupEntities, counters = "", showDefaultCount = true, prefix = "") => {
 			if (!groupEntities.length && !prefix)
 				return "";
@@ -2413,6 +2417,7 @@ class FreeboxCard extends HTMLElement {
 			}
 			return [...groups.entries()].map(([deviceName, attributes]) => `<div class="debug-device-attrs"><div class="debug-device-attrs-title"><code>device_attr</code><span>${this._escape(deviceName)}</span></div><div class="debug-attributes">${attributes.map(({ key, value }) => { const formatted = typeof value === "object" ? JSON.stringify(value) : String(value); return `<div class="debug-attribute"><code>${this._escape(key)}</code><span>${this._escape(formatted)}</span></div>`; }).join("")}</div></div>`).join("");
 		})() : "";
+
 		const trackerCounters = `<span class="tracker-count total" title="Total devices">${totalDevices}</span><span class="tracker-count enabled" title="Connected or disconnected devices">${enabledDevices}</span><span class="tracker-count disabled" title="Disabled devices">${disabledDevices}</span>`;
 		return `<section class="panel debug-panel" data-section-key="debug">
 			<div class="section-title"><ha-icon icon="mdi:bug-outline"></ha-icon>${this._t("debug")}</div>
@@ -2678,7 +2683,6 @@ class FreeboxCard extends HTMLElement {
 			.hardware-value { stroke-linecap:round; transition:stroke-dashoffset .4s ease,stroke .3s ease; }
 			.hardware-tile > strong,.hardware-tile > span { position:relative; z-index:1; } .hardware-tile strong { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; }
 			.hardware-tile span { min-width:0; overflow:hidden; color:var(--secondary-text-color); text-overflow:ellipsis; white-space:nowrap; font-size:10px; }
-			
 			.secondary-grid { display:grid; grid-template-columns:1fr; gap:12px; }
 			.mini { display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:11px; min-height:66px; padding:12px; }
 			.mini-icon { display:grid; place-items:center; width:39px; height:39px; border-radius:12px; color:var(--secondary-text-color); background:var(--secondary-background-color); }
@@ -3045,7 +3049,6 @@ class FreeboxCardEditor extends HTMLElement {
 			.compact-option-group:not([open]) .compact-option-content { display:none; }
 			.compact-option-group[open] .compact-option-content { display:block; }
 			.compact-option-group .section-suboptions { padding:12px; }
-
 			ha-switch { flex-shrink:0; }
 			@media (max-width:600px) { .grid, .switch-grid, .bandwidth-limits { grid-template-columns:1fr; } }
 		</style>
@@ -3084,6 +3087,7 @@ class FreeboxCardEditor extends HTMLElement {
 			});
 		});
 	}
+
 	async _loadDetectionDevices() {
 		if (!this._hass?.connection || Object.keys(this._hass.devices || {}).length || this._detectionDevices.length || this._detectionLoading) return;
 		this._detectionLoading = true;
@@ -3296,6 +3300,7 @@ class FreeboxCardEditor extends HTMLElement {
 		});
 		this._updateCapabilityOptions();
 	}
+
 	_valueChanged(event) {
 		if (!this._config)
 			return;
