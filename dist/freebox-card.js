@@ -918,15 +918,18 @@ class FreeboxCard extends HTMLElement {
 			merged.set(entity.entity_id, { ...(merged.get(entity.entity_id) || {}), ...entity });
 		};
 
+		const scoped = integrationDeviceIds.size > 0;
+		const belongs = (entity) => scoped ? integrationDeviceIds.has(entity.device_id) : entity.platform === "freebox";
+
 		for (const entity of this._entityRegistry)
-			if (entity.platform === "freebox" || integrationDeviceIds.has(entity.device_id))
+			if (belongs(entity))
 				addEntity(entity);
 
 		for (const entity of Object.values(this._hass.entities || {}))
-			if (entity.platform === "freebox" || integrationDeviceIds.has(entity.device_id))
+			if (belongs(entity))
 				addEntity(entity);
 
-		for (const [entityId, state] of Object.entries(this._hass.states || {})) {
+		if (!scoped) for (const [entityId, state] of Object.entries(this._hass.states || {})) {
 			const objectId = entityId.split(".", 2)[1] || "";
 			const friendlyName = state.attributes?.friendly_name || "";
 			if (objectId.startsWith("freebox_") || /(^|\s)freebox(\s|$)/i.test(friendlyName))
@@ -949,7 +952,7 @@ class FreeboxCard extends HTMLElement {
 		if (this._discoveryRegistrySource === source && this._discoveryDeviceId === selectedDeviceId && this._discoveryResult) return this._discoveryResult;
 		const integrationDeviceIds = this._getIntegrationDeviceIds();
 		const result = { hardwareTemperatures: [], hardwareFans: [], hardwareStorage: [], hardwareRaid: [], trackers: [] };
-		const candidates = registry.filter((entry) => entry?.entity_id && (entry.platform === "freebox" || integrationDeviceIds.has(entry.device_id)));
+		const candidates = registry.filter((entry) => entry?.entity_id && (integrationDeviceIds.size ? integrationDeviceIds.has(entry.device_id) : entry.platform === "freebox"));
 		const activeCandidates = candidates.filter((entry) => !entry.disabled_by);
 		const assign = (key, entry) => { result[key] ??= entry.entity_id; };
 		result.trackers = candidates.filter((entry) => entry.entity_id.startsWith("device_tracker."));
